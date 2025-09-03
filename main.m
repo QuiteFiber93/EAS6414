@@ -1,0 +1,35 @@
+%% Problem 1
+clear; clc; close all;
+
+% givens and nominal values
+xN = [2; 0.5];
+pN = [0.2; 4; 0.1];
+tspan = [0, 30];
+
+% Numerical Integration
+func = @(t,x) xdot(t, x, pN);
+[t, y] = ode45(func, tspan, xN);
+
+
+% Plotting
+figure
+plot(t, y(:, 1))
+title('x_1 vs t')
+
+figure
+plot(t, y(:, 1))
+title('x_2 vs t')
+
+figure
+plot(y(:, 1), y(:, 2))
+title('x_1 vs x_2')
+
+%% Problem 2
+clear; clc;
+% Creating random coefficients
+a = rand(7, 1);
+
+% Creating true x values
+x = linspace(-5, 5, 200);
+
+% Adding noise to measurements
