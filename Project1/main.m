@@ -89,7 +89,7 @@ a = scale_coeff * rand(7, 1);
 x = linspace(-5, 5, 200)';
 
 % true measurements
-H = [x.^6, x.^5, x.^4, x.^3, x.^2, x.^1, x.^0];
+H = [x.^6, x.^5, x.^4, x.^3, x.^2, x, x.^0];
 y = H*a;
 
 % adding noise to y measurements
@@ -119,12 +119,12 @@ plot(x, yhat, 'DisplayName', 'Estimated');
 scatter(x, ytilde, 10, 'filled', 'DisplayName', 'Noisy Data');
 hold off
 legend()
-title('Esimtaed Measurements and Added Noise')
+title('Batch Esimtaed Measurements and Added Noise')
 xlabel('x')
 ylabel('Measurement')
 
 figure
 plot(x, yhat - y)
-title('Error in Estimation')
+title('Error in Batch Estimation')
 xlabel('x')
 ylabel('yhat - y')
