@@ -1,0 +1,9 @@
+function g = psidot(t, x, p)
+    state = [x(1); x(2)];
+    psi = [x(3); x(4); x(5); x(6); x(7); x(8)];
+    dfdp = [0; 0; 0; 0; 0; -state(2); -state(1); -state(1)^3];
+    g = [xdot(t, state, p); psi(4); psi(5); psi(6); ...
+        -psi(1)*(p(2) + 3*p(3)*state(1)^2)- psi(4)*p(1); ...
+        -psi(2)*(p(2) + 3*p(3)*state(1)^2)- psi(5)*p(1);...
+        -psi(3)*(p(2) + 3*p(3)*state(1)^2)- psi(6)*p(1)] + dfdp;
+end

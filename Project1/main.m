@@ -7,24 +7,10 @@ p0N = [0.2; 4; 0.1];
 tspan = [0, 30];
 
 % Numerical Integration
-func = @(t,x) xdot(t, x, p0N);
+func = @(t,y) xdot(t, y, p0N);
 [t, xN] = ode45(func, tspan, x0N);
 
-
-% Plotting
-figure
-plot(t, xN(:, 1))
-title('x_1 vs t')
-
-figure
-plot(t, xN(:, 1))
-title('x_2 vs t')
-
-figure
-plot(xN(:, 1), xN(:, 2))
-title('x_1 vs x_2')
-
-% Deviations
+% Deviations from nominal conditions
 deltaX = [0.01; 0.01];
 deltaP = [0.001; 0.001; 0.001];
 
@@ -34,23 +20,111 @@ p0 = p0N + deltaP;
 
 % Numerical Integration of phi, return values evaled at times returned for
 % xN
+phi0 = [1; 0; 0; 1];
+func = @(t, y) phidot(t, y, p0N);
+y0 = [x0N; phi0];
+[t, phit] = ode45(func, t, y0);
 
 % Numerical Integration of psi, return values evaled at times returned for
 % xN
+clc;
+psi0 = zeros(6, 1);
+y0 = [x0; psi0];
+func = @(t, y) psidot(t, y, p0N);
+[t, psit] = ode45(func, t, y0);
 
-% Calculated xLP
+% Phi and psi need to be resized due to function definitions
+phi = zeros(2, 2, length(t));
+psi = zeros(2, 3, length(t));
 
-% Integrate x0, return values evaled at times returned for xN
+% Creating variable to hold approximation calculations
+xLP = zeros(size(xN));
 
-% Plot Error of x - xLP
+% Resizing phi and psi to be a series of values 
+for n = 1:length(t)
+    phi(:, :, n) = reshape(phit(n, 3:6), 2, 2)';
+    psi(:, :, n) = reshape(psit(n, 3:8), 3, 2)';
+    xLP(n, :) = xN(n, :)' + phi(:, :, n)*deltaX;
+end
 
+% Integrating with true initial conditions
+func = @(t, y) xdot(t, y, p0);
+[t, x] = ode45(func, t, x0);
+
+% Caclculating Error
+e = x - xLP;
+
+% Plotting
+figure
+plot(t, xN(:, 1))
+title('x_1 vs t')
+xlabel('t')
+ylabel('x_1')
+
+figure
+plot(t, xN(:, 2))
+title('x_2 vs t')
+xlabel('t')
+ylabel('x_2')
+
+figure
+plot(xN(:, 1), xN(:, 2))
+title('x_1 vs x_2')
+xlabel('x_1')
+ylabel('x_2')
+
+figure
+plot(t, e(:, 1))
+title('x(t) - x_{LP}(t)')
+xlabel('t')
+ylabel('e(t)')
 
 %% Problem 2
-clear; clc;
+clear; clc; close all;
 % Creating random coefficients
-a = rand(7, 1);
+scale_coeff = 1;
+a = scale_coeff * rand(7, 1);
 
-% Creating true x values
-x = linspace(-5, 5, 200);
+% Creating x values
+x = linspace(-5, 5, 200)';
 
-% Adding noise to measurements
+% true measurements
+H = [x.^6, x.^5, x.^4, x.^3, x.^2, x.^1, x.^0];
+y = H*a;
+
+% adding noise to y measurements
+sigma = 0.1;
+noise = randn(size(y)) * sigma;
+ytilde = y + noise;
+
+% calculating yhat with batch estimation
+ahat = pinv(H) * ytilde;
+
+% Caculating measurements with ahat
+yhat = H*ahat;
+
+figure 
+hold on
+plot(x, y, 'DisplayName', 'True');
+scatter(x, ytilde, 10, 'filled', 'DisplayName', 'Noisy Data');
+hold off
+legend()
+title('True Measurements and Added Noise')
+xlabel('x')
+ylabel('Measurement')
+
+figure
+hold on
+plot(x, yhat, 'DisplayName', 'Estimated');
+scatter(x, ytilde, 10, 'filled', 'DisplayName', 'Noisy Data');
+hold off
+legend()
+title('Esimtaed Measurements and Added Noise')
+xlabel('x')
+ylabel('Measurement')
+
+figure
+plot(x, yhat - y)
+title('Error in Estimation')
+xlabel('x')
+ylabel('yhat - y')
