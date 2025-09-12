@@ -142,10 +142,14 @@ H1 = H(1:m1, :);
 y1tilde = ytilde(1:m1);
 W1 = 1/sigma^2;
 
-P = eye(7)/(H1' * W1 * H1);
-ahat_seq = P*H1'* W1 * y1tilde;
+Pinv = (H1' * W1 * H1);
+ahat_seq = Pinv\H1'* W1 * y1tilde;
 
 
 % starting with after batch estimation
+for k = m1+1:m-1
+    K = P\H(k, :)/(H(k, :) * P * )
+end
+
 
 
