@@ -87,6 +87,7 @@ a = scale_coeff * rand(7, 1);
 
 % Creating x values
 x = linspace(-5, 5, 200)';
+m = length(x);
 
 % true measurements
 H = [x.^6, x.^5, x.^4, x.^3, x.^2, x, x.^0];
@@ -98,10 +99,10 @@ noise = randn(size(y)) * sigma;
 ytilde = y + noise;
 
 % calculating yhat with batch estimation
-ahat = pinv(H) * ytilde;
+ahat_batched = pinv(H) * ytilde;
 
 % Caculating measurements with ahat
-yhat = H*ahat;
+yhat_batched = H*ahat_batched;
 
 figure 
 hold on
@@ -115,7 +116,7 @@ ylabel('Measurement')
 
 figure
 hold on
-plot(x, yhat, 'DisplayName', 'Estimated');
+plot(x, yhat_batched, 'DisplayName', 'Batch Estimated');
 scatter(x, ytilde, 10, 'filled', 'DisplayName', 'Noisy Data');
 hold off
 legend()
@@ -124,7 +125,21 @@ xlabel('x')
 ylabel('Measurement')
 
 figure
-plot(x, yhat - y)
+plot(x, yhat_batched - y)
 title('Error in Batch Estimation')
 xlabel('x')
 ylabel('yhat - y')
+
+%% Problem 2 Sequential Estimation with Alpha Beta implementation
+clc; close all;
+
+
+
+% Weight 
+W = 1 / sigma^2;
+H1 = H(1:6, :);
+
+% Setting up initial conditions
+alpha = 1E1;
+beta = 1E-3 * ones(7, 1);
+P1 = inv(1/alpha^2 * eye(7) + H1'*W*H1);
