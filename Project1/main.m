@@ -82,12 +82,15 @@ ylabel('e(t)')
 %% Problem 2
 clear; clc; close all;
 % Creating random coefficients
+rng(15)
 scale_coeff = 1;
 a = scale_coeff * rand(7, 1);
 
-% Creating x values
-x = linspace(-5, 5, 200)';
-m = length(x);
+% Creating x values with chebyshev spacing
+m = 200;
+upper = 5;
+lower = -5;
+x = linspace(lower, upper, m)';
 
 % true measurements
 H = [x.^6, x.^5, x.^4, x.^3, x.^2, x, x.^0];
@@ -130,22 +133,117 @@ title('Error in Batch Estimation')
 xlabel('x')
 ylabel('yhat - y')
 
-%% Problem 2 Sequential Estimation
-clc; close all;
+figure
+scatter(1:7, ahat_batched - a, 25, 'filled')
+title('Error in Estimated a')
+xlabel('a_i')
+ylabel('ahat - a')
 
-% Variable containing estimation
-ahat_seq = zeros(7 ,1);
+%% Problem 2 Sequential Estimation
+clear; clc; close all;
+
+% Creating random coefficients
+rng(15)
+scale_coeff = 1;
+a = scale_coeff * rand(7, 1);
+
+% Creating x values with chebyshev spacing
+m = 200;
+upper = 5;
+lower = -5;
+x = linspace(lower, upper, m)';
+
+% true measurements
+H = [x.^6, x.^5, x.^4, x.^3, x.^2, x, x.^0];
+y = H*a;
+
+% adding noise to y measurements
+sigma = 0.1;
+noise = randn(size(y)) * sigma;
+ytilde = y + noise;
 
 % Initial Guess Based on Batch Estimation
-m1 = 10;
-H1 = H(1:m1, :);
-y1tilde = ytilde(1:m1);
-W1 = 1/sigma^2;
+m1 = 8;
+W = 1/(sigma^2);
+P = eye(7) / (H(1:m1, :)' * W * H(1:m1, :));
+ahat_seq = P*H(1:m1, :)'*W*ytilde(1:m1);
 
-P = eye(7)/(H1' * W1 * H1);
-ahat_seq = P*H1'* W1 * y1tilde;
+% Sequential estimation
+m2 = m - m1;
+for k = m2:m-1
+    K = P * H(k+1, :)' / (H(k+1, :)*P*H(k+1, :)' + inv(W));
+    P = (eye(7) - K * H(k+1, :))*P;
+    ahat_seq = ahat_seq + K*(ytilde(k+1) - H(k+1, :)*ahat_seq);
+end
+ahat_seq
 
+%% Sequential Estimation with Alpha and Beta
+clear; clc; close all;
 
-% starting with after batch estimation
+% Creating random coefficients
+rng(15)
+scale_coeff = 1;
+a = scale_coeff * rand(7, 1);
 
+% Creating x values with chebyshev spacing
+m = 200;
+upper = 5;
+lower = -5;
+x = linspace(lower, upper, m)';
 
+% true measurements
+H = [x.^6, x.^5, x.^4, x.^3, x.^2, x, x.^0];
+y = H*a;
+
+% adding noise to y measurements
+sigma = 0.1;
+noise = randn(size(y)) * sigma;
+ytilde = y + noise;
+
+% Initial guess based off alpha and beta
+alpha = 1E1;
+beta = 1E-2 * ones(7, 1);
+W = 1/sigma^2;
+P = eye(7) / (1/alpha^2 * eye(7) + H(1, :)' * W * H(1, :));
+ahat_seq = P * (1/alpha * beta + H(1, :)'*W*ytilde(1));
+
+% Sequential estimation for k = 2 - m
+for k = 1:m-1
+    K = P * H(k+1, :)' / (H(k+1, :)*P*H(k+1, :)' + inv(W));
+    P = (eye(7) - K * H(k+1, :))*P;
+    ahat_seq = ahat_seq + K*(ytilde(k+1) - H(k+1, :)*ahat_seq);
+end
+
+yhat_seq = H*ahat_seq;
+
+figure 
+hold on
+plot(x, y, 'DisplayName', 'True');
+scatter(x, ytilde, 10, 'filled', 'DisplayName', 'Noisy Data');
+hold off
+legend()
+title('True Measurements and Added Noise')
+xlabel('x')
+ylabel('Measurement')
+
+figure
+hold on
+plot(x, yhat_seq, 'DisplayName', 'Batch Estimated');
+scatter(x, ytilde, 10, 'filled', 'DisplayName', 'Noisy Data');
+hold off
+legend()
+title('Sequential Esimtaed Measurements and Added Noise')
+xlabel('x')
+ylabel('Measurement')
+
+figure
+plot(x, yhat_seq - y)
+title('Error in Sequential Estimation')
+xlabel('x')
+ylabel('yhat - y')
+
+figure
+scatter(1:7, ahat_seq - a, 25, 'filled')
+title('Error in Estimated a')
+xlabel('a_i')
+ylabel('ahat - a')
