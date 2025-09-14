@@ -82,7 +82,7 @@ ylabel('e(t)')
 %% Problem 2
 clear; clc; close all;
 % Creating random coefficients
-rng(15)
+rng(randi(100))
 scale_coeff = 1;
 a = scale_coeff * rand(7, 1);
 
@@ -281,3 +281,11 @@ scatter(1:7, ahat_seq - a, 25, 'filled')
 title('Error in Estimated a')
 xlabel('a_i')
 ylabel('ahat - a')
+
+%% Attempting with chebyshev basis polynomials
+
+sym x
+hsym = chebyshevT(0:6, x);
+
+t = linspace(-5, 5, 200)(::-1);
+H = subs(hsym, t')
