@@ -44,7 +44,7 @@ xLP = zeros(size(xN));
 for n = 1:length(t)
     phi(:, :, n) = reshape(phit(n, 3:6), 2, 2)';
     psi(:, :, n) = reshape(psit(n, 3:8), 3, 2)';
-    xLP(n, :) = xN(n, :)' + phi(:, :, n)*deltaX;
+    xLP(n, :) = xN(n, :)' + phi(:, :, n)*deltaX + psi(:, :, n)*deltaP;
 end
 
 % Integrating with true initial conditions
@@ -69,7 +69,7 @@ ylabel('x_2')
 
 figure
 plot(xN(:, 1), xN(:, 2))
-title('x_1 vs x_2')
+title('x_2 vs x_1')
 xlabel('x_1')
 ylabel('x_2')
 
@@ -82,8 +82,8 @@ ylabel('e(t)')
 %% Problem 2
 clear; clc; close all;
 % Creating random coefficients
-rng(15)
 scale_coeff = 1;
+rng(2025)
 a = scale_coeff * rand(7, 1);
 
 % Creating x values
@@ -143,8 +143,8 @@ ylabel('ahat - a')
 clear; clc; close all;
 
 % Creating random coefficients
-rng(15)
 scale_coeff = 1;
+rng(2025)
 a = scale_coeff * rand(7, 1);
 
 % Creating x values with chebyshev spacing
@@ -163,19 +163,19 @@ noise = randn(size(y)) * sigma;
 ytilde = y + noise;
 
 % Initial Guess Based on Batch Estimation
-m1 = 90;
-W = 1/(sigma^2);
+m1 = 45;
+W = 1;
 P = eye(7) / ( H(1:m1, :)' * W * H(1:m1, :));
 ahat_seq = P * ( H(1:m1, :)'*W*ytilde(1:m1));
 
 % Sequential estimation
 m2 = m - m1;
+W = 1/(sigma^2);
 for k = m2:m-1
     K = P * H(k+1, :)' / (H(k+1, :)*P*H(k+1, :)' + inv(W));
     P = (eye(7) - K * H(k+1, :))*P;
     ahat_seq = ahat_seq + K*(ytilde(k+1) - H(k+1, :)*ahat_seq);
 end
-ahat_seq
 
 yhat_seq = H*ahat_seq;
 
@@ -215,7 +215,7 @@ ylabel('ahat - a')
 clear; clc; close all;
 
 % Creating random coefficients
-rng(15)
+rng(2025)
 scale_coeff = 1;
 a = scale_coeff * rand(7, 1);
 
