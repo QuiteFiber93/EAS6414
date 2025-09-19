@@ -49,12 +49,10 @@ px2 = sum(p_x(2, :));
 p1 = [px1; px2];
 
 % Reward of scheme 1
-rx1 = 1; % Reward of xk = 1
-rx2 = 2; % Reward of xk = 2
-r1 = [rx1; rx2];
+r1 = [1; 2];
 
 % Expected Value of scheme 1
-E1 = dot(p1, r1)
+E1 = dot(p1, r1);
 
 % Probability of of scheme 2;
 pxa = sum(p_x(:, 1));
@@ -63,16 +61,47 @@ pxc = sum(p_x(:, 3));
 p2 = [pxa; pxb; pxc];
 
 % Reward of scheme 2
-rxa = 3; % Reward of xk = A
-rxb = -2;% Reward of xk = B
-rxc = 3; % Reward of xk = C
-r2 = [rxa; rxb; rxc];
+r2 = [3; -2; 3];
 
 % Expected Value of scheme 2
-E2 = dot(p2, r2)
-
+E2 = dot(p2, r2);
 
 % covariance
 var_x = p1' * (r1 - E1).^2;
 var_y = p2' * (r2 - E2).^2;
-cov = 
+covar = (r1-E1)' * p_x * (r2-E2);
+
+sigma_xy = [var_x, covar; covar, var_y];
+% D = diag(D);
+
+% Parameter for ellipse
+t = linspace(0, 2*pi, 100);
+
+% Creating figure for plots
+figure
+hold on
+
+% Creating covirance ellipses
+sigma_lvls = [1, 2, 3];
+mu = [E1; E2];
+for STD = sigma_lvls
+ellipse = [cos(t); sin(t)];
+% Creating scale
+scale = STD;
+
+% Creating rotation and scaling of circle to ellipse
+[P, D] = eig(sigma_xy);
+ellipse = P * scale * sqrt(D) * ellipse + mu;
+
+plot(ellipse(1, :), ellipse(2, :), 'DisplayName',[num2str(STD), '\sigma'])
+end
+
+% Plotting Mean
+scatter(E1, E2, '+', 'k', 'DisplayName', 'Mean')
+
+% Plotting Eigenvectors
+quiver(E1, E2, P(1, 1)* 2, P(2, 1) * 2, '--k','HandleVisibility','off')
+quiver(E1, E2, P(1, 2)* 5, P(2, 2) * 5, '--k','HandleVisibility','off')
+hold off
+axis equal
+legend()
