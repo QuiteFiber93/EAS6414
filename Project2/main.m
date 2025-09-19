@@ -1,0 +1,72 @@
+%% Central Limit Theorem
+clear; clc; close all;
+
+% Setting seed for repeatability
+rng(2025)
+
+% Number of samples for each histogram
+sample_size = 1000;
+
+% List of values for N, the number of points which will be summed
+N_list = [5, 10, 20, 50, 100];
+
+% Pre allocating array for sums
+uniform_data = zeros(sample_size, length(N_list));
+gaussian_data = zeros(sample_size, length(N_list));
+
+% Histogram data
+
+% Creating histogram for each value of N in N_list
+for n = 1:length(N_list)
+    N = N_list(n);
+    uniform_data(:, n) = sum(rand(1000, N), 2);
+
+    x = linspace(0, N, sample_size);
+    gaussian_data(:, n) = normpdf(x, N/2, sqrt(N/12));
+
+    % Creating plots
+    figure
+    histogram(uniform_data(:, n), 'Normalization', 'pdf')
+    hold on
+    plot(x, gaussian_data(:, n), 'k')
+    hold off
+
+    title(['Uniform Sampling Compared to Gaussian Distribution, N = ', num2str(N)])
+    legend(['Gausian Distribution', 'Uniform Sampling'])
+end
+
+
+%% Covariance Representation
+clc; clear; close all;
+
+
+% Probability Table (rows are scheme 1, cols are scheme 2)
+p_x = [0.1, 0.2, 0.3; 0.2, 0.1, 0.1];
+
+% Probability of of scheme 1;
+px1 = sum(p_x(1, :));
+px2 = sum(p_x(2, :));
+p1 = [px1; px2];
+
+% Reward of scheme 1
+rx1 = 1; % Reward of xk = 1
+rx2 = 2; % Reward of xk = 2
+r1 = [rx1; rx2];
+
+% Expected Value of scheme 1
+E1 = dot(p1, r1)
+
+% Probability of of scheme 2;
+pxa = sum(p_x(:, 1));
+pxb = sum(p_x(:, 2));
+pxc = sum(p_x(:, 3));
+p2 = [pxa; pxb; pxc];
+
+% Reward of scheme 2
+rxa = 3; % Reward of xk = A
+rxb = -2;% Reward of xk = B
+rxc = 3; % Reward of xk = C
+r2 = [rxa; rxb; rxc];
+
+% Expected Value of scheme 2
+E2 = dot(p2, r2)
