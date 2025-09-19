@@ -70,3 +70,10 @@ r2 = [rxa; rxb; rxc];
 
 % Expected Value of scheme 2
 E2 = dot(p2, r2)
+
+
+% covariance
+covariance_matrix = zeros(2,2);
+
+
+
