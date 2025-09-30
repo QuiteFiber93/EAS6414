@@ -93,17 +93,17 @@ Methods yield the same answer
 var_x = p1' * (r1 - E1).^2;
 var_y = p2' * (r2 - E2).^2;
 covar = (r1-E1)' * p_x * (r2-E2);
-sigma_xy = [var_x, covar; covar, var_y];
+P = [var_x, covar; covar, var_y];
 
 
 % Second method
-sigma_xy = zeros(2,2);
+P = zeros(2,2);
 for state_1 = 1:2
     for state_2 = 1:3
-        sigma_xy = sigma_xy + p_x(state_1, state_2) * ([r1(state_1); r2(state_2)])*([r1(state_1), r2(state_2)]);
+        P = P + p_x(state_1, state_2) * ([r1(state_1); r2(state_2)])*([r1(state_1), r2(state_2)]);
     end
 end
-sigma_xy = sigma_xy - mu*mu';
+P = P - mu*mu';
 
 % Parameter for ellipse
 t = linspace(0, 2*pi, 100);
@@ -123,8 +123,8 @@ for STD = sigma_lvls
     scale = STD;
 
     % Creating rotation and scaling of circle to ellipse
-    [P, D] = eig(sigma_xy);
-    cov_ellipse = P * scale * sqrt(D) * ellipse + mu;
+    [V, D] = eig(P);
+    cov_ellipse = V * scale * sqrt(D) * ellipse + mu;
     
     plot(cov_ellipse(1, :), cov_ellipse(2, :), 'DisplayName',[num2str(STD), '\sigma'])
 end
@@ -133,8 +133,8 @@ end
 scatter(E1, E2, '+', 'k', 'DisplayName', 'Mean')
 
 % Plotting Eigenvectors of covariance ellipse, scaling to match 3sigma
-quiver(E1, E2, P(1, 1), P(2, 1), max(sigma_lvls)*sqrt(D(1,1)), '--k', 'HandleVisibility','off')
-quiver(E1, E2, P(1, 2), P(2, 2), max(sigma_lvls)*sqrt(D(2,2)), '--k', 'HandleVisibility','off')
+quiver(E1, E2, V(1, 1), V(2, 1), max(sigma_lvls)*sqrt(D(1,1)), '--k', 'HandleVisibility','off')
+quiver(E1, E2, V(1, 2), V(2, 2), max(sigma_lvls)*sqrt(D(2,2)), '--k', 'HandleVisibility','off')
 hold off
 axis equal
 legend()
