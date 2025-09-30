@@ -23,8 +23,8 @@ for n = 1:length(N_list)
     N = N_list(n);
 
     % Creating uniformly sampled data array 
-    % with dimensions (sample_size by N)
-    % Summing along columns to generate sum of each sample
+    % with dimensions (rows = sample_size by cols = N)
+    % Summing each row to generate sum of each sample
     uniform_data(:, n) = sum(rand(sample_size, N), 2);
 
     % Generating Normal Distribution plot
@@ -105,6 +105,9 @@ for state_1 = 1:2
 end
 P = P - mu*mu';
 
+% Principle axes and values of P
+[V, D] = eig(P);
+
 % Parameter for ellipse
 t = linspace(0, 2*pi, 100);
 
@@ -122,8 +125,7 @@ for STD = sigma_lvls
     % Creating scale
     scale = STD;
 
-    % Creating rotation and scaling of circle to ellipse
-    [V, D] = eig(P);
+    % Rotating and scaling of circle to ellipse
     cov_ellipse = V * scale * sqrt(D) * ellipse + mu;
     
     plot(cov_ellipse(1, :), cov_ellipse(2, :), 'DisplayName',[num2str(STD), '\sigma'])
@@ -135,6 +137,7 @@ scatter(E1, E2, '+', 'k', 'DisplayName', 'Mean')
 % Plotting Eigenvectors of covariance ellipse, scaling to match 3sigma
 quiver(E1, E2, V(1, 1), V(2, 1), max(sigma_lvls)*sqrt(D(1,1)), '--k', 'HandleVisibility','off')
 quiver(E1, E2, V(1, 2), V(2, 2), max(sigma_lvls)*sqrt(D(2,2)), '--k', 'HandleVisibility','off')
+
 hold off
 axis equal
 legend()
