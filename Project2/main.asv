@@ -111,9 +111,9 @@ end
 % Plotting Mean
 scatter(E1, E2, '+', 'k', 'DisplayName', 'Mean')
 
-% Plotting Eigenvectors of covariance ellipse, scaling to match 3sigma
-quiver(E1, E2, P(1, 1), P(2, 1), max(sigma_lvls)*sqrt(D(1,1)), '--k', 'HandleVisibility','off')
-quiver(E1, E2, P(1, 2), P(2, 2), max(sigma_lvls)*sqrt(D(2,2)), '--k', 'HandleVisibility','off')
+% Plotting Eigenvectors
+quiver(E1, E2, P(1, 1), P(2, 1), '--k','HandleVisibility','off')
+quiver(E1, E2, P(1, 2), P(2, 2), '--k','HandleVisibility','off')
 hold off
 axis equal
 legend()
