@@ -80,6 +80,13 @@ covar = (r1-E1)' * p_x * (r2-E2);
 
 sigma_xy = [var_x, covar; covar, var_y];
 % D = diag(D);
+% simga_xy = [2.2, 2.2; 2.2, 7.5];
+
+for state_1 = 1:2
+    for state_2 = 1:3
+        sigma_xy(state_1, state_2) = p_x(state_1, state_2)*[r1(state_1); r2(state_2)]*[r_1(state_1); r_2(state_2)]';
+    end
+end
 
 % Parameter for ellipse
 t = linspace(0, 2*pi, 100);
@@ -111,9 +118,9 @@ end
 % Plotting Mean
 scatter(E1, E2, '+', 'k', 'DisplayName', 'Mean')
 
-% Plotting Eigenvectors
-quiver(E1, E2, P(1, 1), P(2, 1), '--k','HandleVisibility','off')
-quiver(E1, E2, P(1, 2), P(2, 2), '--k','HandleVisibility','off')
+% Plotting Eigenvectors of covariance ellipse, scaling to match 3sigma
+quiver(E1, E2, P(1, 1), P(2, 1), max(sigma_lvls)*sqrt(D(1,1)), '--k', 'HandleVisibility','off')
+quiver(E1, E2, P(1, 2), P(2, 2), max(sigma_lvls)*sqrt(D(2,2)), '--k', 'HandleVisibility','off')
 hold off
 axis equal
 legend()

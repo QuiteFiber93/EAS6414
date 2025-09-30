@@ -73,13 +73,37 @@ r2 = [3; -2; 3];
 % Expected Value of scheme 2
 E2 = dot(p2, r2);
 
+% Location of center
+mu = [E1; E2];
+
 % covariance
+
+%{
+Two different ways of calculating the matrix
+The first way is 
+(x - mu_x)' * p(x, y) * (y - mu_y)
+
+The second way is 
+sum ( p(x,y) * (x; y) * (x, y) ) - (mu_x; mu_y) * (mu_x, mu_y)
+
+Methods yield the same answer
+%}
+
+% First method
 var_x = p1' * (r1 - E1).^2;
 var_y = p2' * (r2 - E2).^2;
 covar = (r1-E1)' * p_x * (r2-E2);
-
 sigma_xy = [var_x, covar; covar, var_y];
-% D = diag(D);
+
+
+% Second method
+sigma_xy = zeros(2,2);
+for state_1 = 1:2
+    for state_2 = 1:3
+        sigma_xy = sigma_xy + p_x(state_1, state_2) * ([r1(state_1); r2(state_2)])*([r1(state_1), r2(state_2)]);
+    end
+end
+sigma_xy = sigma_xy - mu*mu';
 
 % Parameter for ellipse
 t = linspace(0, 2*pi, 100);
@@ -93,9 +117,6 @@ ellipse = [cos(t); sin(t)];
 
 % Multiples of std to be plotted
 sigma_lvls = [1, 2, 3];
-
-% Location of center
-mu = [E1; E2];
 
 for STD = sigma_lvls
     % Creating scale
@@ -117,3 +138,6 @@ quiver(E1, E2, P(1, 2), P(2, 2), max(sigma_lvls)*sqrt(D(2,2)), '--k', 'HandleVis
 hold off
 axis equal
 legend()
+title('Covariance Ellipses For Lottery Schemes')
+xlabel('Scheme 1')
+ylabel('Scheme 2')
