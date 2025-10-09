@@ -21,7 +21,16 @@ state0 = [state0;phi0(:); psi0(:)];
 % Integrating ODE for system and for transition matrices
 nlfunc = @(t, state) dynamics_LP(t, state, p);
 [t, sol] = ode45(nlfunc, t, state0);
-xN = sol(:, 1:2)
+
+% Parsing solution
+xN = sol(:, 1:2);
+phi = zeros(2, 2, length(t));
+psi = zeros(2, 6, length(t));
+
+for n = 1:length(t)
+    phi(:, :, n) = reshape(sol(:, 3:6), 2, 2);
+    psi(:, :, n) = reshape(sol(:, 7:18), 2, 2);
+end
 
 % Adding measurement error
 % sigma = 0.1;
