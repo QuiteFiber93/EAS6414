@@ -6,9 +6,17 @@ x0N = [2; 0.5];
 p0N = [0.2; 4; 0.1];
 tspan = [0, 30];
 
-% Numerical Integration
-func = @(t,y) xdot(t, y, p0N);
-[t, xN] = ode45(func, tspan, x0N);
+% Initial Conditions
+phi0 = eye(2);
+psi0 = zeros(2, 6);
+state0 = [x0N;phi0(:); psi0(:)];
+
+% Integrating ODE for system and for transition matrices
+nlfunc = @(t, state) dynamics_LP(t, state, p0N);
+[t, sol] = ode45(nlfunc, tspan, state0);
+xN = sol(:, 1:2);
+phit = sol(:, 3:6);
+psit = sol(:, 7:12);
 
 % Deviations from nominal conditions
 deltaX = [0.01; 0.01];
@@ -18,21 +26,6 @@ deltaP = [0.001; 0.001; 0.001];
 x0 = x0N + deltaX;
 p0 = p0N + deltaP;
 
-% Numerical Integration of phi, return values evaled at times returned for
-% xN
-phi0 = [1; 0; 0; 1];
-func = @(t, y) phidot(t, y, p0N);
-y0 = [x0N; phi0];
-[t, phit] = ode45(func, t, y0);
-
-% Numerical Integration of psi, return values evaled at times returned for
-% xN
-clc;
-psi0 = zeros(6, 1);
-y0 = [x0; psi0];
-func = @(t, y) psidot(t, y, p0N);
-[t, psit] = ode45(func, t, y0);
-
 % Phi and psi need to be resized due to function definitions
 phi = zeros(2, 2, length(t));
 psi = zeros(2, 3, length(t));
@@ -40,10 +33,9 @@ psi = zeros(2, 3, length(t));
 % Creating variable to hold approximation calculations
 xLP = zeros(size(xN));
 
-% Resizing phi and psi to be a series of values 
 for n = 1:length(t)
-    phi(:, :, n) = reshape(phit(n, 3:6), 2, 2)';
-    psi(:, :, n) = reshape(psit(n, 3:8), 3, 2)';
+    phi(:, :, n) = reshape(sol(n, 3:6), 2, 2);
+    psi(:, :, n) = reshape(sol(n, 7:12), 2, 3);
     xLP(n, :) = xN(n, :)' + phi(:, :, n)*deltaX + psi(:, :, n)*deltaP;
 end
 
