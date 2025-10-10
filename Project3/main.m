@@ -2,7 +2,7 @@
 clc; clear; close all;
 
 % Getting array of times
-t = (1:3000)/10;
+tspan = (1:3000)/10;
 
 % Initializing given variables
 x0 = 2; xdot0 = 0;
@@ -20,38 +20,50 @@ state0 = [state0;phi0(:); psi0(:)];
 
 % Integrating ODE for system and for transition matrices
 nlfunc = @(t, state) dynamics_LP(t, state, p);
-[t, sol] = ode45(nlfunc, t, state0);
+[t, sol] = ode45(nlfunc, tspan, state0);
 
 % Parsing solution
-xN = sol(:, 1:2);
+x = sol(:, 1:2);
 phi = zeros(2, 2, length(t));
 psi = zeros(2, 6, length(t));
 
 for n = 1:length(t)
-    phi(:, :, n) = reshape(sol(:, 3:6), 2, 2);
-    psi(:, :, n) = reshape(sol(:, 7:18), 2, 2);
+    phi(:, :, n) = reshape(sol(n, 3:6), 2, 2);
+    psi(:, :, n) = reshape(sol(n, 7:18), 2, 6);
 end
 
-% Adding measurement error
-% sigma = 0.1;
-% rng(2025) % Setting seed for reusability
-% xtilde = xN + rand(size(xN))*sigma;
-
-%%
 subplot(1, 3, 1)
-plot(t, xN(:, 1))
+plot(t, x(:, 1))
 title('$x(t)$ vs $t$', 'Interpreter', 'latex')
 xlabel('$t$', 'Interpreter', 'latex')
 ylabel("$x(t)$", 'Interpreter', 'latex')
 
 subplot(1, 3, 2)
-plot(t, xN(:, 2))
+plot(t, x(:, 2))
 title('$\dot{x}(t)$ vs $t$', 'Interpreter', 'latex')
 xlabel('$t$', 'Interpreter', 'latex')
 ylabel("$\dot{x}(t)$", 'Interpreter', 'latex')
 
 subplot(1, 3, 3)
-plot(xN(:, 1), xN(:, 2))
+plot(x(:, 1), x(:, 2))
 title('$\dot{x}(t)$ vs $x(t)$', 'Interpreter', 'latex')
 xlabel('$x(t)$', 'Interpreter', 'latex')
 ylabel("$\dot{x}(t)$", 'Interpreter', 'latex')
+
+% Validating State Transition Matrix
+
+
+%% Implementing GLSDC
+
+% Setting seed for repeatability
+rng(2025)
+
+% Generating Measurements from Error
+sigma = 0.1;
+xtilde = x(:, 1) + sigma * randn(size(t));
+
+% Parameters to estimatie: z = [x; p]
+z_true = [state0(1:2); p];
+z_guess = 0.8 * z_true;
+
+max_iter = 10;
