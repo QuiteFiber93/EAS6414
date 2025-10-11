@@ -32,8 +32,9 @@ for n = 1:length(t)
     psi(:, :, n) = reshape(sol(n, 7:18), 2, 6);
 end
 
-% Implementing GLSDC
-clc;
+%{
+    Gaussian Least Squares Differential Corrector
+%}
 % Setting seed for repeatability
 rng(2025)
 
@@ -48,32 +49,7 @@ z_guess = 0.8 * z_true;
 % Weight Matrix
 W = 1/(sigma^2)*eye(length(t));
 
-max_iter = 6;
-% Iterations
-for n = 1:max_iter
-
-    % Propogating System Under Initial Estimate
-    nlfunc_guess = @(t, state) dynamics_LP(t, state, z_guess(3:8));
-    state0_guess = [z_guess(1:2); phi0(:); psi0(:)];
-    z_guess(1:2)
-    [t, sol_guess] = ode45(nlfunc_guess, t, state0_guess);
-
-    % Calculating error
-    err = xtilde - sol_guess(:, 1);
-    
-    % Calculating H matrix at each time step
-    H = [sol_guess(:, 3:2:17)];
-    
-
-    % Calculating Weighted Least Squares Jacobian
-    J = err' * W * err
-
-    deltaZ = pinv(H) *err;
-
-    z_guess = z_guess + deltaZ;
-end
-
-%% 
+%% Plotting
 subplot(1, 3, 1)
 plot(t, x(:, 1))
 title('$x(t)$ vs $t$', 'Interpreter', 'latex')
