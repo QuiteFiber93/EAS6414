@@ -15,14 +15,17 @@ psi0 = zeros(2, 6);
 y0 = [x0(:); phi0(:); psi0(:)];
 
 % Integrating ODE
-opts = odeset('RelTol', 1E-8, 'AbsTol',1E-9);
+opts = odeset('RelTol', 1E-9, 'AbsTol',1E-9);
 func = @(t, y) xdot(t, y, p);
 [t, x] = ode45(func, tspan, x0, opts);
 
 func = @(t, y) dynamics(t, y, p);
 [t, sol] = ode45(func, t, y0, opts);
 
+xLp =
 
+figure
+plot(t, sol(:, 1)-x(:, 1))
 %% Function Definitions
 function f = xdot(t, x, p)
     f = [x(2);
