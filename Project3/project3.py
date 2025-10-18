@@ -44,16 +44,16 @@ print(f'Scale factor for initial guess  = {scale_factor}\n')
 System Dynamics
 ********************************************************************
 '''
-def dynamics(t: float, y: NDArray[np.number], p: NDArray[np.number]) -> NDArray:
+def dynamics(t: float, y: NDArray[np.floating], p: NDArray[np.floating]) -> NDArray:
     """Integrates the system dynamics and variational matrices.
-
+    
     Args:
-        t (float): time variable
-        y (NDArray[np.number]): one dimensional array with length 18 (vertical concatenation of xdot, flattened Phi matrix, flattend Psi matrix)
-        p (NDArray[np.number]): vector of parameters
-
+        t: Time variable
+        y: State vector [x, phi.flat, psi.flat] (length 18)
+        p: Parameter vector (length 6)
+    
     Returns:
-        NDArray: _description_
+        Time derivative of state vector
     """
     # Extracting x, phi, psi
     x, phi, psi = y[:2], y[2:6].reshape(2, 2), y[6:].reshape(2, 6)
@@ -65,16 +65,17 @@ def dynamics(t: float, y: NDArray[np.number], p: NDArray[np.number]) -> NDArray:
                     [-(p2 + 3*p3*x[0]**2), -p1]
                 ])
     
+    theta = p5*t + p6
     # Partial derivative of f wrt p
     dfdp = np.array([
                         [0, 0, 0, 0, 0, 0],
-                        [-x[1], -x[0], -x[0]**3, -sin(p5*t + p6), -p4*t*cos(p5*t+p6), -p4*cos(p5*t+p6)]
+                        [-x[1], -x[0], -x[0]**3, -sin(theta), -p4*t*cos(theta), -p4*cos(theta)]
                     ])
     
     # Equation for xdot
     xdot = np.array([
                         x[1],
-                        -( p1*x[1] + p2*x[0] + p3*x[0]**3 + p4*sin(p5*t + p6) )
+                        -( p1*x[1] + p2*x[0] + p3*x[0]**3 + p4*sin(theta) )
                     ])
     
     # Definitions of PhiDot and PsiDot
@@ -82,7 +83,7 @@ def dynamics(t: float, y: NDArray[np.number], p: NDArray[np.number]) -> NDArray:
     psidot = A @ psi + dfdp
     
     # Returning stacked column vector of each time rate
-    return np.concatenate([xdot, phidot.flatten(), psidot.flatten()])
+    return np.concatenate([xdot, phidot.ravel(), psidot.ravel()])
 
 '''
 ********************************************************************
@@ -314,15 +315,24 @@ ellipse = np.array([cos(t), sin(t)])
 covar_ellipse_plot, covar_ellipse_axs = plt.subplots(2, 2, layout='tight')
 for n in range(2):
     for i in range(2):
-        # Extract Px (2x2 matrix in upper left corner) from P(t)
+        
         k = 2*n + i
+        
+        # Get state
+        if n==0 and i==0:
+            state = z[:2]
+        else:
+            state = glsdc_traj.y[:2, glsdc_traj.t==sample_times[k-1]]
+        
+        # Extract Px (2x2 matrix in upper left corner) from P(t)
         Px = Pt[k, :2, :2]
         
         # Get  Eigenvalues and Eigen Vectors of Px
         D, V = np.linalg.eig(Px)
+        covar_ellipse_axs[n, i].scatter(state[0], state[1], color = 'k')
         for sigma_lvl in range(1, 4):
             
-            cov_ellispe = V @ (sigma_lvl * np.sqrt(D) * ellipse.T).T + z[:2].reshape(2, 1)
+            cov_ellispe = V @ (sigma_lvl * np.sqrt(D) * ellipse.T).T + state.reshape(2, 1)
             covar_ellipse_axs[n, i].plot(cov_ellispe[0], cov_ellispe[1], label = r'$\sigma = $' + f'{sigma_lvl}')
             covar_ellipse_axs[n, i].set_title(f't = {100 * k}')
             covar_ellipse_axs[n, i].set_xlabel(r'$x(t)$')
