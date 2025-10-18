@@ -286,48 +286,58 @@ Covariance Matrix Calculations
 ********************************************************************
 '''
 
-# # Times at which system is sampled
-# sample_times = [100, 200, 300]
-# print('\n' + delimeter_equals + '\nProducing Covariance Ellipses\n' + delimeter_equals)
-# print(f'\nCalculating P(t) at t = 0, 100, 200, 300')
+# Times at which system is sampled
+sample_times = [100, 200, 300]
+print('\n' + delimeter_equals + '\nProducing Covariance Ellipses\n' + delimeter_equals)
+print(f'\nCalculating P(t) at t = 0, 100, 200, 300')
 
-# # Creating variable to hold covariance matrix at each sample time
-# Pt = np.zeros((4, 8, 8))
+# Creating variable to hold covariance matrix at each sample time
+Pt = np.zeros((4, 8, 8))
 
-# # Calculating P(t_0) as inv(Lambda)
-# P0 = np.linalg.inv(Lambda)
-# Pt[0, :, :] = P0
+# Calculating P(t_0) as inv(Lambda)
+P0 = np.linalg.inv(Lambda)
+Pt[0, :, :] = P0
 
-# # Using solution calculated from GLSDC to construct Phi(t) and Psi(t)
-# for k,t in enumerate(sample_times):
-#     PhiPsiVec = glsdc_traj.y[2:, glsdc_traj.t==t]
-#     Phi = PhiPsiVec[:4].reshape(2,2)
-#     Psi = PhiPsiVec[4:].reshape(2, 6)
-#     dzdz0 = np.block([[Phi, Psi], [np.zeros((6, 2)), np.eye(6)]])
-#     Pt[k+1, :, :] = dzdz0 @ P0 @ dzdz0.T
+# Using solution calculated from GLSDC to construct Phi(t) and Psi(t)
+for k,t in enumerate(sample_times):
+    PhiPsiVec = glsdc_traj.y[2:, glsdc_traj.t==t]
+    Phi = PhiPsiVec[:4].reshape(2,2)
+    Psi = PhiPsiVec[4:].reshape(2, 6)
+    dzdz0 = np.block([[Phi, Psi], [np.zeros((6, 2)), np.eye(6)]])
+    Pt[k+1, :, :] = dzdz0 @ P0 @ dzdz0.T
 
 
-# # Creating cos and sin of parameter for ellipse
-# t = np.linspace(0, 2*pi, 100)
-# ellipse = np.array([cos(t), sin(t)])
+# Creating cos and sin of parameter for ellipse
+t = np.linspace(0, 2*pi, 100)
+ellipse = np.array([cos(t), sin(t)])
 
-# covar_ellipse_plot, covar_ellipse_axs = plt.subplots(2, 2)
-# for k in range(4):
-#     # Extract Px (2x2 matrix in upper left corner) from P(t)
-#     Px = Pt[k, :2, :2]
-    
-#     # Get  Eigenvalues and Eigen Vectors of Px
-#     D, V = np.linalg.eig(Px)
-    
+covar_ellipse_plot, covar_ellipse_axs = plt.subplots(2, 2, layout='tight')
+for n in range(2):
+    for i in range(2):
+        # Extract Px (2x2 matrix in upper left corner) from P(t)
+        k = 2*n + i
+        Px = Pt[k, :2, :2]
+        
+        # Get  Eigenvalues and Eigen Vectors of Px
+        D, V = np.linalg.eig(Px)
+        for sigma_lvl in range(1, 4):
+            
+            cov_ellispe = V @ (sigma_lvl * np.sqrt(D) * ellipse.T).T + z[:2].reshape(2, 1)
+            covar_ellipse_axs[n, i].plot(cov_ellispe[0], cov_ellispe[1], label = r'$\sigma = $' + f'{sigma_lvl}')
+            covar_ellipse_axs[n, i].set_title(f't = {100 * k}')
+            covar_ellipse_axs[n, i].set_xlabel(r'$x(t)$')
+            covar_ellipse_axs[n, i].set_ylabel(r'$\dot{x}(t)$')
+            covar_ellipse_axs[n, i].legend()
 
-# '''
-# ********************************************************************
-# Sample Statistics
-# ********************************************************************
-# '''
-# print('\n' + delimeter_equals + '\nMonte Carlo Simulation\n' + delimeter_equals + '\n')
-# # Iterating 1000  times
-# for k in  range(1000):
-#     if k+1 % 50 == 0:
-#         print(f'{int((k+1)/10)} %')
-#     ytilde = measured_states.y[0, :] + np.random.normal(loc=0, scale=sigma, size = len(teval))
+plt.show()
+'''
+********************************************************************
+Sample Statistics
+********************************************************************
+'''
+print('\n' + delimeter_equals + '\nMonte Carlo Simulation\n' + delimeter_equals + '\n')
+# Iterating 1000  times
+for k in  range(1000):
+    if k+1 % 50 == 0:
+        print(f'{int((k+1)/10)} %')
+    ytilde = measured_states.y[0, :] + np.random.normal(loc=0, scale=sigma, size = len(teval))
