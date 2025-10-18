@@ -96,13 +96,11 @@ psi0    = np.zeros((2, 6))
 state0  = np.concatenate([x0, phi0.flatten(), psi0.flatten()])
 
 print(delimeter_equals + '\nTask 1: Simulating Motion, Measurements, and Validating Matrices\n' + delimeter_equals)
-print("\nBeginning Integration of System Dynamics ...")
+print("\nIntegrating System Dynamics ...")
 
 # Integrating System
 simulated_motion    = solve_ivp(dynamics, tspan, state0, args = (p,), rtol = 1E-10, atol=1E-10)
 measured_states     = solve_ivp(dynamics, tspan, state0, t_eval = teval, args = (p,), rtol = 1E-10, atol=1E-10)
-
-print('Integration Complete')
 
 """
 ********************************************************************
@@ -197,76 +195,79 @@ new_cost = 1
 print(delimeter_equals + '\nTask 2: GLSDC Algorithm\n'+delimeter_equals)
 # Entering GLSDC Loop
 print('\nIteration   x(0)   xdot(0)   p1      p2      p3     p4     p5     p6     Cost\n' + delimeter_dash)
-for i in range(maxiter):
-    
-    # Initialize for iteration
-    x0_guess = z[:2]
-    p_guess = z[2:]
-    
-    
-    old_cost = new_cost
-    print('')
-    new_cost = 0
-    
-    # Values for solving the normal equations Lambda @ deltaZ = N
-    Lambda = np.zeros((8, 8))
-    N = np.zeros((8, 1)) 
-    
-    initial_state_guess = np.concatenate([x0_guess, phi0.flatten(), psi0.flatten()])
-    
-    # Integrate trajectory based of of x0_guess and p_guess
 
-    glsdc_guess_traj = solve_ivp(
-                            dynamics,
-                            tspan,
-                            initial_state_guess,
-                            t_eval=teval,
-                            method = 'DOP853',
-                            rtol = 1E-8,
-                            atol = 1E-8,
-                            args = (p_guess,)
-                        )
+def glsdc(dynamics, z: NDArray, ytilde: NDArray = ytilde, tol: float = tol, maxiter: int = maxiter):
+    old_cost = np.inf
+    new_cost = 1
     
-    # Parsing through data from integration
-    if glsdc_guess_traj.status == -1:
-        print(glsdc_guess_traj.message)
+    for i in range(maxiter):
         
-    err = np.zeros((len(teval), 1))
-    
-    for k, t_k in enumerate(teval):
-        err[k, 0] = ytilde[k] - glsdc_guess_traj.y[0, k]
+        # Initialize for iteration
+        x0_guess = z[:2]
+        p_guess = z[2:]
         
-        # Creating Weight Matrix
-        R = np.diag([(1+t_k)*sigma**2]) # (1+t_k)*sigma**2
-        W = np.linalg.inv(R)
+        old_cost = new_cost
+        new_cost = 0
         
-        # Pulling Variational Matrices
-        phi = glsdc_guess_traj.y[2:6, k].reshape(2, 2)
-        psi = glsdc_guess_traj.y[6:, k].reshape(2, 6)
-        H_i = np.concatenate([ np.squeeze(np.array([[1, 0]]) @ phi), np.squeeze(np.array([[1, 0]]) @ psi)]).reshape(1, 8)
+        # Values for solving the normal equations Lambda @ deltaZ = N
+        Lambda = np.zeros((8, 8))
+        N = np.zeros((8, 1)) 
         
-        # Adding to matrices for normal equation
-        Lambda += H_i.T @ W @ H_i
-        N += H_i.T @ W @ err[k].reshape(1, 1)
+        initial_state_guess = np.concatenate([x0_guess, phi0.flatten(), psi0.flatten()])
         
-        # Adding error to weighted least squares cost
-        new_cost += err[k].T @ W @ err[k]
+        # Integrate trajectory based off of x0_guess and p_guess
 
-    # Checking if error tolerance is met
-    if abs(new_cost - old_cost) / old_cost <= tol:
-        break
-    
-    # If not converged, calculated next step in z
-    delta_z = np.linalg.solve(Lambda, N).reshape(8)
-    
-    print(f'{i+1}   {x0_guess[0]:>10.3f}   {x0_guess[1]:0.3f}   {p_guess[0]:0.3f}' 
-          + f'  {p_guess[1]:0.3f}   {p_guess[2]:0.3f}   {p_guess[3]:0.3f}   {p_guess[4]:0.3f}   {p_guess[5]:0.3}   {new_cost:0.3}')
-    
-    # Stepping z
-    z += delta_z
-    
-    # Keep between zero and 2*pi
-    z[-1] = z[-1] % (2*pi)
+        glsdc_guess_traj = solve_ivp(
+                                dynamics,
+                                tspan,
+                                initial_state_guess,
+                                t_eval=teval,
+                                method = 'DOP853',
+                                rtol = 1E-8,
+                                atol = 1E-8,
+                                args = (p_guess,)
+                            )
+        
+        # Parsing through data from integration
+        if glsdc_guess_traj.status == -1:
+            print(glsdc_guess_traj.message)
+            
+        err = np.zeros((len(teval), 1))
+        
+        for k, t_k in enumerate(teval):
+            err[k, 0] = ytilde[k] - glsdc_guess_traj.y[0, k]
+            
+            # Creating Weight Matrix
+            R = np.diag([(1+t_k)*sigma**2])
+            W = np.linalg.inv(R)
+            
+            # Pulling Variational Matrices
+            phi = glsdc_guess_traj.y[2:6, k].reshape(2, 2)
+            psi = glsdc_guess_traj.y[6:, k].reshape(2, 6)
+            H_i = np.concatenate([ np.squeeze(np.array([[1, 0]]) @ phi), np.squeeze(np.array([[1, 0]]) @ psi)]).reshape(1, 8)
+            
+            # Adding to matrices for normal equation
+            Lambda += H_i.T @ W @ H_i
+            N += H_i.T @ W @ err[k].reshape(1, 1)
+            
+            # Adding error to weighted least squares cost
+            new_cost += err[k].T @ W @ err[k]
+
+        # Checking if error tolerance is met
+        if abs(new_cost - old_cost) / old_cost <= tol:
+            break
+        
+        # If not converged, calculated next step in z
+        delta_z = np.linalg.solve(Lambda, N).reshape(8)
+        
+        # Stepping z
+        z += delta_z
+        
+        # Keep between zero and 2*pi
+        z[-1] = z[-1] % (2*pi)
+    return z, glsdc_guess_traj, Lambda
+
+z, glsdc_traj, Lambda = glsdc(dynamics, z, ytilde)
 
 print(delimeter_dash)
 if abs(new_cost - old_cost) / old_cost > tol:
@@ -285,42 +286,48 @@ Covariance Matrix Calculations
 ********************************************************************
 '''
 
-# Times at which system is sampled
-sample_times = [100, 200, 300]
-print('\n' + delimeter_equals + '\nProducing Covariance Ellipses\n' + delimeter_equals)
-print(f'\nCalculating P(t) at t = 0, 100, 200, 300')
+# # Times at which system is sampled
+# sample_times = [100, 200, 300]
+# print('\n' + delimeter_equals + '\nProducing Covariance Ellipses\n' + delimeter_equals)
+# print(f'\nCalculating P(t) at t = 0, 100, 200, 300')
 
-# Creating variable to hold covariance matrix at each sample time
-Pt = np.zeros((4, 8, 8))
+# # Creating variable to hold covariance matrix at each sample time
+# Pt = np.zeros((4, 8, 8))
 
-# Calculating P(t_0) as inv(Lambda)
-P0 = np.linalg.inv(Lambda)
-Pt[0, :, :] = P0
+# # Calculating P(t_0) as inv(Lambda)
+# P0 = np.linalg.inv(Lambda)
+# Pt[0, :, :] = P0
 
-# Using solution calculated from GLSDC to construct Phi(t) and Psi(t)
-for k,t in enumerate(sample_times):
-    PhiPsiVec = glsdc_guess_traj.y[2:, glsdc_guess_traj.t==t]
-    Phi = PhiPsiVec[:4].reshape(2,2)
-    Psi = PhiPsiVec[4:].reshape(2, 6)
-    dzdz0 = np.block([[Phi, Psi], [np.zeros((6, 2)), np.eye(6)]])
-    Pt[k+1, :, :] = dzdz0 @ P0 @ dzdz0.T
+# # Using solution calculated from GLSDC to construct Phi(t) and Psi(t)
+# for k,t in enumerate(sample_times):
+#     PhiPsiVec = glsdc_traj.y[2:, glsdc_traj.t==t]
+#     Phi = PhiPsiVec[:4].reshape(2,2)
+#     Psi = PhiPsiVec[4:].reshape(2, 6)
+#     dzdz0 = np.block([[Phi, Psi], [np.zeros((6, 2)), np.eye(6)]])
+#     Pt[k+1, :, :] = dzdz0 @ P0 @ dzdz0.T
 
 
-# Creating cos and sin of parameter for ellipse
-t = np.linspace(0, 2*pi, 100)
-ellipse = np.array([cos(t), sin(t)])
+# # Creating cos and sin of parameter for ellipse
+# t = np.linspace(0, 2*pi, 100)
+# ellipse = np.array([cos(t), sin(t)])
 
-covar_ellipse_plot, covar_ellipse_axs = plt.subplots(2, 2)
-for k in range(4):
-    # Extract Px (2x2 matrix in upper left corner) from P(t)
-    Px = Pt[k, :2, :2]
+# covar_ellipse_plot, covar_ellipse_axs = plt.subplots(2, 2)
+# for k in range(4):
+#     # Extract Px (2x2 matrix in upper left corner) from P(t)
+#     Px = Pt[k, :2, :2]
     
-    # Get  Eigenvalues and Eigen Vectors of Px
-    D, V = np.linalg.eig(Px)
-    print(D)
+#     # Get  Eigenvalues and Eigen Vectors of Px
+#     D, V = np.linalg.eig(Px)
+    
 
-'''
-********************************************************************
-Sample Statistics
-********************************************************************
-'''
+# '''
+# ********************************************************************
+# Sample Statistics
+# ********************************************************************
+# '''
+# print('\n' + delimeter_equals + '\nMonte Carlo Simulation\n' + delimeter_equals + '\n')
+# # Iterating 1000  times
+# for k in  range(1000):
+#     if k+1 % 50 == 0:
+#         print(f'{int((k+1)/10)} %')
+#     ytilde = measured_states.y[0, :] + np.random.normal(loc=0, scale=sigma, size = len(teval))
