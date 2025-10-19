@@ -46,8 +46,8 @@ figure
 plot(true_state(:, 1), true_state(:, 2))
 
 figure
-plot(t, true_state(:, 1))
-
+hold on
+plot(t, t)
 
 
 %% Function Definitions
