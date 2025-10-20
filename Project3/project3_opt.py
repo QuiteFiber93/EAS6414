@@ -1,13 +1,16 @@
-import matplotlib.pyplot as plt, numpy as np
+# Standard Library Imports
+from collections import namedtuple
+import time
+
+# Third Party Imports
+import matplotlib.pyplot as plt, numpy as np, pandas as pd
 from numpy import pi, sin, cos
 from numpy.typing import NDArray
 from scipy.integrate import solve_ivp
 from numba import njit
-from collections import namedtuple
 from joblib import Parallel, delayed
-import multiprocessing
-import time
 from tqdm import tqdm
+
 '''
 EAS 6414 Project 3
 Dylan D'Silva
@@ -16,8 +19,8 @@ Dylan D'Silva
 # Settings to change how file runes
 sigma           = 0.1 # Given Standard Deviation 
 maxiter         = 30 # Max iteration count for GLSDC 
-scale_factor    = 0.9 # Scale factor for GLSDC Guess
-tol             = 1E-3 # Error Tolerance for GLSDC
+scale_factor    = 0.99 # Scale factor for GLSDC Guess
+tol             = 1E-5 # Error Tolerance for GLSDC
 
 # Delimeter strings for prinmt statements
 delim_equals    = '='*90
@@ -131,16 +134,38 @@ def glsdc(dynamics,
           maxiter: int = 30,
           verbose: bool = False
           ):
+    """
+    Implements the GLSDC Algorithm as described in 
+    Statistical Orbit Determination by Tapley, Schultz, and Born 2004
+
+    Args:
+        dynamics (function): Function Containintg system dynamics
+        z (NDArray): Parameters to be estimated
+        ytilde (NDArray): Measurements
+        teval (list, optional): Times at which solution to dynamics must be returned. Defaults to teval.
+        tspan (list, optional): Interval over which system is integrated. Defaults to tspan.
+        sigma (float, optional): Standard Deviation of ytilde. Defaults to sigma.
+        tol (float, optional): Tolerance for solution convergence from GLSDC. Defaults to 1e-3.
+        maxiter (int, optional): Maximum number of iterations for GLSDC Algorithm. Defaults to 30.
+        verbose (bool, optional): Determines whether to print statements concerning algorithm progress. Defaults to False.
+
+    Returns:
+        namedtuple: namedtuple containing estimate for z, the trajectory using z as the initial coniditon, and Information Matrix
+    """
     
+    # Initializng / declaring relevant values
     phi0    = np.eye(2)
     psi0    = np.zeros((2, 6))
     
-    old_cost = np.inf
-    new_cost = 1
+    old_cost = np.inf   # old_cost is the cost of the most recently run iteration
+    new_cost = 1        # new_cost is the cost of the current iteration
     
     # Precompute weights for all time steps (vectorized)
-    teval_arr   = np.array(teval)
-    W_diag      = 1.0 / ((1 + teval_arr) * sigma**2)  # Diagonal weight matrix elements
+    teval_arr   = np.array(teval) # Numpy array of all times for ytilde
+    
+    # Set scale_with_t = 0 for constant weight matrix
+    scale_with_t = 0 # Determines how error weights will change over time, if at all.
+    W_diag      = 1.0 / ((1 + scale_with_t * teval_arr) * sigma**2)  # Diagonal weight matrix elements
     
     # H matrix selector (avoid repeated array creation)
     dgdx = np.array([[1.0, 0.0]])
@@ -153,6 +178,7 @@ def glsdc(dynamics,
     for i in range(maxiter):
         
         # Initialize for iteration
+        # Extracting x0 and p estimates from z variable
         x0_guess    = z[:2]
         p_guess     = z[2:]
         
@@ -163,7 +189,7 @@ def glsdc(dynamics,
         Lambda  = np.zeros((8, 8))
         N       = np.zeros(8)
         
-        # Set up initial state
+        # Set up initial state according to current estimate of z
         initial_state_guess = np.concatenate([x0_guess, phi0.flatten(), psi0.flatten()])
         
         # Integrate trajectory
@@ -179,7 +205,7 @@ def glsdc(dynamics,
         
         # Checking to see if the solve_ivp function actually integrated the entire interval
         # Sometimes I ran into errors about required step sizes being too small and the 
-        # function exited integration prematurely
+        # function exited integration prematurely. This just checks and lets me know that is the case
         if glsdc_guess_traj.status == -1:
             print(f"Integration failed: {glsdc_guess_traj.message}")
             return z, glsdc_guess_traj, Lambda
@@ -192,8 +218,8 @@ def glsdc(dynamics,
         new_cost = np.sum(W_diag * err**2)
         
         # Extracting Phi and Psi data from solution
-        phi_data = glsdc_guess_traj.y[2:6, :].T # dim = len(teval), 4
-        psi_data = glsdc_guess_traj.y[6:18, :].T # dim = len(teval), 12
+        phi_data = glsdc_guess_traj.y[2:6, :].T # dim = len(teval) x 4
+        psi_data = glsdc_guess_traj.y[6:18, :].T # dim = len(teval) x 12
         
         for k in range(len(teval)):
             
@@ -213,12 +239,12 @@ def glsdc(dynamics,
             print(f'{i:5d} {z[0]:8.4f} {z[1]:8.4f} {z[2]:8.4f} {z[3]:8.4f} ' +
                   f'{z[4]:8.4f} {z[5]:8.4f} {z[6]:8.4f} {z[7]:8.4f} {new_cost:12.6e}')
         
-        # Check convergence
-        if abs(new_cost - old_cost) / old_cost <= tol:
-            break
-        
         # Solve for update step (use solve instead of inv for numerical stability)
         delta_z = np.linalg.solve(Lambda, N)
+        
+        # Check convergence
+        if abs(new_cost - old_cost) / old_cost <= tol or np.linalg.norm(delta_z) <= tol:
+            break
         
         # Update state using calculated step
         z += delta_z
@@ -229,7 +255,8 @@ def glsdc(dynamics,
     if verbose:
         print('-' * 80)
     
-    if abs(new_cost - old_cost) / old_cost > tol:
+    # Again, checking convergence of solution
+    if abs(new_cost - old_cost) / old_cost > tol and np.linalg.norm(delta_z) > tol:
         print(f'\nGLSDC failed to converge (tol={tol}) in {maxiter} iterations')
     
     return GLSDC_SOL(z, glsdc_guess_traj, Lambda)
@@ -241,12 +268,32 @@ Covariance Matrix Calculations
 ********************************************************************
 '''
 
-def propagate_covar(z: np.ndarray, glsdc_traj, Lambda: np.ndarray, saveplot: bool = False, filename: str = 'Images/prop_cov_ellipse.png'):
+def create_cov_ellipse(P, mu, scale):
+    
+    
+    t       = np.linspace(0, 2*pi, 100)    
+    ellipse = np.array([cos(t), sin(t)])
+
+    D, V = np.linalg.eig(P)
+    
+    cov_ellispe = V @ (scale * np.sqrt(D) * ellipse.T).T + mu
+    
+    return cov_ellispe
+    
+
+def propagate_cov(z: np.ndarray, glsdc_traj, Lambda: np.ndarray, saveplot: bool = False, filename: str = 'Images/prop_cov_ellipse.png'):
     
     # Times at which system is sampled
     sample_times = [100, 200, 300]
+    
+    # Creating variable to hold state values at each time
+    xt = np.zeros((2, 4))
+    
     # Creating variable to hold covariance matrix at each sample time
     Pt = np.zeros((4, 8, 8))
+
+    # Assining x(t=0)
+    xt[:, 0] = z[:2]
 
     # Calculating P(t_0) as inv(Lambda)
     P0 = np.linalg.inv(Lambda)
@@ -254,11 +301,25 @@ def propagate_covar(z: np.ndarray, glsdc_traj, Lambda: np.ndarray, saveplot: boo
 
     # Using solution calculated from GLSDC to construct Phi(t) and Psi(t)
     for k,t in enumerate(sample_times):
-        PhiPsiVec = glsdc_traj.y[2:, t*10-1]
+        
+        # Extracting state variable
+        xt[:, k + 1] = glsdc_traj.y[:2, t * 10 - 1]
+        
+        # Extracting Phi and Psi at t from glsdc estimate trajectory
+        PhiPsiVec = glsdc_traj.y[2:, t * 10 - 1]
+        
+        # Reshaping Phi and Psi to their matrix forms
         Phi = PhiPsiVec[:4].reshape(2,2)
         Psi = PhiPsiVec[4:].reshape(2, 6)
+        
+        # dz/dz0 = [[dx/dx0, dx/dp], [dp/dx, dp/dp]]
+        # dx/dx0 = Phi(t)
+        # dx/dp = Psi(t)
+        # dp/dx = 0
+        # dp/dp = I_(6x6)
         dzdz0 = np.block([[Phi, Psi], [np.zeros((6, 2)), np.eye(6)]])
         Pt[k+1, :, :] = dzdz0 @ P0 @ dzdz0.T
+        
 
 
     # Creating cos and sin of parameter for ellipse
@@ -272,31 +333,37 @@ def propagate_covar(z: np.ndarray, glsdc_traj, Lambda: np.ndarray, saveplot: boo
             k = 2*n + i
             
             # Get state
-            if n==0 and i==0:
+            # if k = 0, uses initial state estimate
+            # if k > 0, pulls from simulated tajectory
+            if k == 0:
                 state = z[:2]
-            else:
-                state = glsdc_traj.y[:2, glsdc_traj.t==sample_times[k-1]]
+            elif k == 1:
+                state = glsdc_traj.y[:2, 999]
+            elif k == 2:
+                state = glsdc_traj.y[:2, 1999]
+            elif k == 3:
+                state = glsdc_traj.y[:2, 2999]
+            
             
             # Extract Px (2x2 matrix in upper left corner) from P(t)
             Px = Pt[k, :2, :2]
             
-            # Get  Eigenvalues and Eigen Vectors of Px
-            D, V = np.linalg.eig(Px)
-            covar_ellipse_axs[n, i].scatter(state[0], state[1], color = 'k')
+            covar_ellipse_axs[n, i].scatter(state[0], state[1], s = 1.5, color = 'blue')
             for sigma_lvl in range(1, 4):
                 
-                cov_ellispe = V @ (sigma_lvl * np.sqrt(D) * ellipse.T).T + state.reshape(2, 1)
-                covar_ellipse_axs[n, i].plot(cov_ellispe[0], cov_ellispe[1], label = r'$\sigma = $' + f'{sigma_lvl}')
+                cov_ellispe = create_cov_ellipse(Px, state.reshape(2, 1), sigma_lvl)
+                covar_ellipse_axs[n, i].plot(cov_ellispe[0], cov_ellispe[1], color = 'blue', label = f'{sigma_lvl}' + r'$\sigma$')
                 covar_ellipse_axs[n, i].set_title(f't = {100 * k}')
                 covar_ellipse_axs[n, i].set_xlabel(r'$x(t)$')
                 covar_ellipse_axs[n, i].set_ylabel(r'$\dot{x}(t)$')
-                covar_ellipse_axs[n, i].legend()
+            
+            # covar_ellipse_axs[n, i].legend()
 
-    plt.show()
     if saveplot:
+        plt.show()
         covar_ellipse_plot.savefig(filename, format='png')
     
-    return Pt
+    return xt, Pt, covar_ellipse_plot, covar_ellipse_axs
 '''
 ********************************************************************
 Sample Statistics
@@ -304,25 +371,64 @@ Sample Statistics
 '''
 
 
-def monte_carlo_sim(niter = 1000):
-
-    x_at_0 = np.zeros((len(teval), 2))
-    x_at_100 = np.zeros((len(teval), 2))
-    x_at_200 = np.zeros((len(teval), 2))
-    x_at_300 = np.zeros((len(teval), 2))
+def monte_carlo_sim(dynamics, z_true, measured_states, niter = 1000, n_jobs = -1):
     
-    num_cores = multiprocessing.cpu_count()
-    def extract_relevant_times(n, z, glsdc_sol):
-        x_at_0[n, :] = z[:2]
-        x_at_100[n, :] = np.squeeze(glsdc_sol.y[:2, 999])
-        x_at_200[n, :] = np.squeeze(glsdc_sol.y[:2, 1999])
-        x_at_300[n, :] = np.squeeze(glsdc_sol.y[:2, 2999])
+    print(f'Running Monte Carlo simulation with {niter} iterations...')
+    progress_bar = tqdm(range(niter), desc = 'Monte Carlo Simulation of GLSDC Results')
+    
+    # Times at which values are extracted
+    sample_times = [0, 100, 200, 300]
+    
+    # MonteCarloTrial is a namedtuple to containt the results we care about from a single trial
+    MonteCarloTrial = namedtuple('MonteCarloTrial', ['t0', 't100', 't200', 't300', 'p'])
+    
+    # This function will be used to help implement multi processing of 1000 glsdc functin calls
+    def single_glsdc_run(seed):
+        
+        # Setting seed for repeatability
+        rng = np.random.default_rng(seed=seed)
+        
+        # Create Noise Measurements for single monte carlo trial
+        ytilde_trial = measured_states.y[0, :] + np.random.normal(loc=0, scale=sigma, size = len(teval))
+        
+        # Run GLSDC algorithm for single monte carlo trial
+        z_trial, glsdc_trial, _ = glsdc(dynamics, scale_factor*z_true, ytilde_trial)
+        
+        # Extract x at t = 0, 100, 200, 300, and p
+        return MonteCarloTrial(z_trial[:2], # x(0)
+                               np.squeeze(glsdc_trial.y[:2, 999]), # x(100)
+                               np.squeeze(glsdc_trial.y[:2, 1999]), # x(200)
+                               np.squeeze(glsdc_trial.y[:2, 2999]), # x(300)
+                               z_trial[2:]) # p
         
     
-    for n in tqdm(range(niter)):
-        ytilde = measured_states.y[0, :] + np.random.normal(loc=0, scale=sigma, size = len(teval))
-        z, glsdc_sol, Lambda = glsdc(dynamics, scale_factor*z_true, ytilde)
-        extract_relevant_times(n, z, glsdc_sol)
+    # Perform Monte Carlo Parallelization
+    trial_results = Parallel(n_jobs = n_jobs)(delayed(single_glsdc_run)(2025 + n) for n in progress_bar)
+    
+    # Parsing results
+    x_at_0      = np.array([trial.t0 for trial in trial_results])
+    x_at_100    = np.array([trial.t100 for trial in trial_results])
+    x_at_200    = np.array([trial.t200 for trial in trial_results])
+    x_at_300    = np.array([trial.t300 for trial in trial_results])
+    
+    # Calculate Sample Statistics
+    monte_carlo_stats = {
+        't0'    : {'mean' : np.mean(x_at_0, axis = 0),   'cov'   : np.cov(x_at_0.T)},
+        't100'  : {'mean' : np.mean(x_at_100, axis = 0), 'cov'   : np.cov(x_at_100.T)},
+        't200'  : {'mean' : np.mean(x_at_200, axis = 0), 'cov'   : np.cov(x_at_200.T)},
+        't300'  : {'mean' : np.mean(x_at_300, axis = 0), 'cov'   : np.cov(x_at_300.T)}
+    }
+
+    # Printing Statistics to Console
+    print(delim_dash)
+    for key,value in monte_carlo_stats.items():
+
+        print(f'Statistics for t = '+ key)
+        print(f'    - Mean: {value['mean']}')
+        print(f'    - Cov:\n{np.array2string(value['cov'])}')
+        print(np.linalg.eig(value['cov']))
+    
+    return monte_carlo_stats, x_at_0, x_at_100, x_at_200, x_at_300
 
 '''
 ********************************************************************
@@ -443,21 +549,67 @@ if __name__ == '__main__':
     '''
     
     z, glsdc_traj, Lambda = glsdc(dynamics, z, ytilde, verbose = True)
-    print(type(glsdc_traj))
+
     print('Final Estimate')
     x0_guess = z[:2]
     p_guess = z[2:]
 
     print(f'x0 = {np.array2string(x0_guess)}')
     print(f'p  = {np.array2string(p_guess)}') 
-    
+    '''
+    ********************************************************************
+    Plotting
+    ********************************************************************
+    '''
     print('\n' + delim_equals + '\nProducing Covariance Ellipses\n' + delim_equals)
     print(f'\nCalculating P(t) at t = 0, 100, 200, 300')
     
-    Pt = propagate_covar(z, glsdc_traj, Lambda, saveplot=False)
+    xt, Pt, cov_fig, cov_fig_axs = propagate_cov(z, glsdc_traj, Lambda, saveplot=False)
+    
+    
+    
+    print()
+    for k in range(4):
+        print(f'x(t = {int(k*100)})  = {np.array2string(xt[:, k])}\n')
+        print(f'Px(t = {int(k*100)}) = \n{np.array2string(Pt[k, :2, :2])}')
+        print(f'{np.linalg.eig(Pt[k, :2, :2])}')
     
     print('\n' + delim_equals + '\nMonte Carlo Simulation\n' + delim_equals + '\n')
-
-
-
-
+    
+    monte_carlo_results = monte_carlo_sim(dynamics, z_true, measured_states, niter = 100)
+    
+    # Adding Sample covariance ellipses to plot
+    for n in range(2):
+        for i in range(2):
+            k = 2*n + i
+            
+            if k == 0:
+                sample_mu = monte_carlo_results[0]['t0']['mean']
+                sample_cov = monte_carlo_results[0]['t0']['cov']
+            elif k == 1:
+                sample_mu = monte_carlo_results[0]['t100']['mean']
+                sample_cov = monte_carlo_results[0]['t100']['cov']
+            elif k == 2:
+                sample_mu = monte_carlo_results[0]['t200']['mean']
+                sample_cov = monte_carlo_results[0]['t200']['cov']
+            elif k == 3:
+                sample_mu = monte_carlo_results[0]['t300']['mean']
+                sample_cov = monte_carlo_results[0]['t300']['cov']
+            
+            for scale in range(1, 4):
+                cov_ellipse = create_cov_ellipse(sample_cov, sample_mu.reshape(2, 1), scale)              
+                cov_fig_axs[n, i].plot(cov_ellipse[0], cov_ellipse[1], '--', color = 'orange', label = f'Sample {scale}' + r'$\sigma$')
+                cov_fig_axs[n, i].scatter(sample_mu[0], sample_mu[1], s = 1.5, color = 'orange')
+                
+    # Adding true value to plot
+    for n in range(2):
+        for i in range(2):
+            k = 2*n + i
+            if k == 0:
+                true_state = x0
+            
+            else:
+                true_state = measured_states.y[:2, measured_states.t==k*100]
+            cov_fig_axs[n, i].scatter(true_state[0], true_state[1], color = 'k')
+    
+    plt.show()
