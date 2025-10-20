@@ -474,48 +474,6 @@ def make_sol_plots(saveplot = False):
         phase_portrait.savefig('Images/phase_portrait.png', format='png', dpi=1440)
         measurement_fig.savefig('Images/measurements_fig.png', format='png', dpi=1440)
         print('Plots Generated and Saved\n')
-        
-def plot_cov_ellipse(sample_cov, projected_cov, sample_states, projected_state, saveplot = False, filename = 'Images/cov_ellipse'):
-    
-    covar_ellipse_plot, covar_ellipse_axs = plt.subplots(2, 2, layout='tight')
-    
-    for n in range(2):
-        for i in range(2):
-            
-            k = 2*n + i
-            
-            # Get Covariance matrix from sample_cov and projected_cov
-            sample_mu = sample_states[k, :]
-            projected_mu = projected_state[:, k]
-            
-            # Get state from sample_state and projected_state
-            sample_Px = sample_cov[k, : ,:]
-            projected_Px = projected_cov[k, :, :]
-            
-            # Getting true location to be plotted
-            if k == 0:
-                true_state = x0
-            else:
-                true_state = measured_states.y[0:1, measured_states.t==k*100-1]
-            
-            # Plots the true location at each point
-            covar_ellipse_axs[n, i].scatter(true_state[0], true_state[1], 1.5, 'k')
-            
-            # Loop through 3 standard deviations
-            for scale in range(1, 4):
-                
-                # Call create_cov_ellipse() to return a set of x-y pairs to draw ellipse 
-                # Function is called for sample statistics and projected statistics
-                sample_cov_ellipse = create_cov_ellipse(sample_Px, sample_mu, scale, npoints=70)
-                projected_cov_ellipse = create_cov_ellipse(projected_Px, projected_mu, npoints=70)
-                covar_ellipse_axs[n, i].plot(sample_cov_ellipse[0], sample_cov_ellipse[1], color = 'blue')
-                covar_ellipse_axs[n, i].plot(projected_cov_ellipse[0], projected_cov_ellipse[1], '--', color = 'orange')
-                
-
-    if saveplot:
-        plt.show()
-        covar_ellipse_plot.savefig(filename, format='png')
-        
 
         
 if __name__ == '__main__':
@@ -619,13 +577,3 @@ if __name__ == '__main__':
         print(f'    - Mean: {value['mean']}')
         print(f'    - Cov:\n{np.array2string(value['cov'])}')
         print(np.linalg.eig(value['cov']))
-    
-    sample_cov = np.array([
-        value['cov'] for value in monte_carlo_stats.values()
-    ])
-    
-    sample_states = np.array([
-        value['mean'] for value in monte_carlo_stats.values()
-    ])
-    
-    plot_cov_ellipse(sample_cov, Pt, sample_states, xt)
