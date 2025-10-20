@@ -175,7 +175,7 @@ def glsdc(dynamics,
     teval_arr   = np.array(teval) # Numpy array of all times for ytilde
     
     # Set scale_with_t = 0 for constant weight matrix
-    scale_with_t = 0 # Determines how error weights will change over time, if at all.
+    scale_with_t = 1 # Determines how error weights will change over time, if at all.
     W_diag      = 1.0 / ((1 + scale_with_t * teval_arr) * sigma**2)  # Diagonal weight matrix elements
     
     # H matrix selector (avoid repeated array creation)
@@ -295,7 +295,7 @@ def create_cov_ellipse(P: np.ndarray, mu: np.ndarray, scale: float = 1.0, npoint
     ellipse = np.array([cos(t), sin(t)])
 
     D, V = np.linalg.eig(P)
-    cov_ellispe = V @ (scale * np.sqrt(D) * ellipse.T).T + mu
+    cov_ellispe = V @ (scale * np.sqrt(D) * ellipse.T).T + mu.reshape(2, 1)
     
     return cov_ellispe
     
@@ -485,7 +485,7 @@ def plot_cov_ellipse(sample_cov, projected_cov, sample_states, projected_state, 
             k = 2*n + i
             
             # Get Covariance matrix from sample_cov and projected_cov
-            sample_mu = sample_states[:, k]
+            sample_mu = sample_states[k, :]
             projected_mu = projected_state[:, k]
             
             # Get state from sample_state and projected_state
@@ -620,3 +620,12 @@ if __name__ == '__main__':
         print(f'    - Cov:\n{np.array2string(value['cov'])}')
         print(np.linalg.eig(value['cov']))
     
+    sample_cov = np.array([
+        value['cov'] for value in monte_carlo_stats.values()
+    ])
+    
+    sample_states = np.array([
+        value['mean'] for value in monte_carlo_stats.values()
+    ])
+    
+    plot_cov_ellipse(sample_cov, Pt, sample_states, xt)
