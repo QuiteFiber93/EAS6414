@@ -128,6 +128,10 @@ def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     
     return statedot
 
+def validate_variational_matrices(dynamics, xN0, p, tspan, times_to_check, delta = 1E-3):
+    pass
+    
+
 '''
 ********************************************************************
 Implementing GLSDC from Tapley, Shultz, and Born 2004
