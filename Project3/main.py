@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser(description='Runs Monte Carlo Methods for GLSDC
 
 parser.add_argument('--sigma', type = float, default = 0.1, help='Standard Deviation of x(t) measurements')
 parser.add_argument('--maxiter', type = int, default = 30, help = 'Maximum Number of iterations for GLSDC Algorithm')
-parser.add_argument('--ntrials', type = int, default = 1000, help = 'Number of Monte Carlo Trials')
+parser.add_argument('--ntrials', type = int, default = 32, help = 'Number of Monte Carlo Trials')
 parser.add_argument('--scalefactor', type = float,  default = 0.99, help = 'Scale factor for GLSDC Guess')
 parser.add_argument('--tol', type = float, default = 1E-5, help = 'Error Tolerance for GLSDC')
 
@@ -117,7 +117,7 @@ def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     psi = y[6:18].reshape((2, 6))
     psidot = np.empty((2, 6))
     for j in range(6):
-        psidot[0, j] = psi[1, j] + dfdp[0, j]
+        psidot[0, j] = psi[1, j]
         psidot[1, j] = -(p2 + 3.0 * p3 * x[0]**2) * psi[0, j] - p1 * psi[1, j] + dfdp[1, j]
     
     # Concatenate results
@@ -127,7 +127,6 @@ def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     statedot[6:18]    = psidot.ravel()
     
     return statedot
-
 
 '''
 ********************************************************************
@@ -280,33 +279,42 @@ Covariance Matrix Calculations
 ********************************************************************
 '''
 
-def create_cov_ellipse(P, mu, scale, npoints = 100):
-    
+def create_cov_ellipse(P: np.ndarray, mu: np.ndarray, scale: float = 1.0, npoints = 100) -> np.ndarray:
+    """Create covariance ellipse points
+
+    Args:
+        P (np.ndarray): Covariance Matrix
+        mu (np.ndarray): Mean array
+        scale (np.ndarray, optional): Number of standard deviations from the mean. Defaults to 1.
+        npoints (int, optional): Number of points to return. Defaults to 100.
+
+    Returns:
+        np.ndarray: x-y pairs of cov ellipse
+    """
     t       = np.linspace(0, 2*pi, npoints)    
     ellipse = np.array([cos(t), sin(t)])
 
     D, V = np.linalg.eig(P)
-    
     cov_ellispe = V @ (scale * np.sqrt(D) * ellipse.T).T + mu
     
     return cov_ellispe
     
 
-def propagate_cov(z: np.ndarray, glsdc_traj, Lambda: np.ndarray, saveplot: bool = False, filename: str = 'Images/prop_cov_ellipse.png'):
-    
+def propagate_cov(z: np.ndarray, glsdc_traj, Lambda: np.ndarray):
+    """Propogates the covariancce of a glsdc estimate
+
+    Returns:
+        Tuple(xt, Pt): The state, xt, and the covariance matrix, Pt, at t=0, 100, 200, 300
+    """
     # Times at which system is sampled
     sample_times = [100, 200, 300]
     
-    # Creating variable to hold state values at each time
+    # Creating variable to hold values at each time
     xt = np.zeros((2, 4))
-    
-    # Creating variable to hold covariance matrix at each sample time
     Pt = np.zeros((4, 8, 8))
 
-    # Assining x(t=0)
-    xt[:, 0] = z[:2]
-
-    # Calculating P(t_0) as inv(Lambda)
+    # Assining t=0
+    xt[:, 0] = z[:2] 
     P0 = np.linalg.inv(Lambda)
     Pt[0, :, :] = P0
 
@@ -335,12 +343,23 @@ def propagate_cov(z: np.ndarray, glsdc_traj, Lambda: np.ndarray, saveplot: bool 
 
 '''
 ********************************************************************
-Sample Statistics
+Monte Carlo Simulation and Sample Statistics
 ********************************************************************
 '''
 
-
 def monte_carlo_sim(dynamics, z_true, measured_states, niter = 1000, n_jobs = -1):
+    """Performs a Monte Carlo Simulation of the GLSDC Algorithm. This function will use joblib to multithread.
+
+    Args:
+        dynamics (function): Function containing sytstem dynamcis
+        z_true (np.ndarray): True parameters to be estimated
+        measured_states (_type_): Solution containing the measured states from the true trajectory
+        niter (int, optional): Number of Monte Carlo Trials to perform. Defaults to 1000.
+        n_jobs (int, optional): Number of processors to use. Defaults to -1.
+
+    Returns:
+        _type_: _description_
+    """
     
     print(f'Running Monte Carlo simulation with {niter} iterations...')
     progress_bar = tqdm(range(niter), desc = 'Monte Carlo Simulation of GLSDC Results')
@@ -497,6 +516,8 @@ def plot_cov_ellipse(sample_cov, projected_cov, sample_states, projected_state, 
         plt.show()
         covar_ellipse_plot.savefig(filename, format='png')
         
+
+        
 if __name__ == '__main__':
     print(delim_equals + '\nEAS 6414 Project 3: Initial State and Parameter Estimation\n' + delim_equals)
     print('\nGiven Values\n' + delim_dash)
@@ -523,6 +544,16 @@ if __name__ == '__main__':
     # Integrating System
     simulated_motion    = solve_ivp(dynamics, tspan, state0, args = (p,), rtol = 1E-10, atol=1E-10)
     measured_states     = solve_ivp(dynamics, tspan, state0, t_eval = teval, args = (p,), rtol = 1E-10, atol=1E-10)
+    
+    # Validating State Transition Matrix
+    print('\nValidating Variational Matrices ...\n' + delim_dash)
+    
+    # times at which to test for validation
+    test_times = [10, 50, 100, 150, 200, 250, 300]
+    
+    for t in test_times:
+        phi = measured_states.y[2:6, t*10-1].reshape(2,2)
+         
 
     """
     ********************************************************************
@@ -566,7 +597,7 @@ if __name__ == '__main__':
     print('\n' + delim_equals + '\nProducing Covariance Ellipses\n' + delim_equals)
     print(f'\nCalculating P(t) at t = 0, 100, 200, 300')
     
-    xt, Pt = propagate_cov(z, glsdc_traj, Lambda, saveplot=False)
+    xt, Pt = propagate_cov(z, glsdc_traj, Lambda)
     
     
     print()
@@ -577,9 +608,11 @@ if __name__ == '__main__':
     
     print('\n' + delim_equals + '\nMonte Carlo Simulation\n' + delim_equals + '\n')
     
-    monte_carlo_stats, monte_carlo_results = monte_carlo_sim(dynamics, z_true, measured_states, niter = args.ntrials)
+    monte_carlo_results = monte_carlo_sim(dynamics, z_true, measured_states, niter = args.ntrials)
     # Printing Statistics to Console
     print(delim_dash)
+    
+    monte_carlo_stats = monte_carlo_results[0]
     for key,value in monte_carlo_stats.items():
 
         print(f'Statistics for t = '+ key)
