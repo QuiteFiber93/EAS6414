@@ -1,6 +1,7 @@
 # Standard Library Imports
 from collections import namedtuple
 import time
+import argparse
 
 # Third Party Imports
 import matplotlib.pyplot as plt, numpy as np, pandas as pd
@@ -16,11 +17,23 @@ EAS 6414 Project 3
 Dylan D'Silva
 '''
 
+
+# This makes it so that key values can be changed as arguments from the command line
+parser = argparse.ArgumentParser(description='Runs Monte Carlo Methods for GLSDC Algorithm')
+
+parser.add_argument('--sigma', type = float, default = 0.1, help='Standard Deviation of x(t) measurements')
+parser.add_argument('--maxiter', type = int, default = 30, help = 'Maximum Number of iterations for GLSDC Algorithm')
+parser.add_argument('--ntrials', type = int, default = 1000, help = 'Number of Monte Carlo Trials')
+parser.add_argument('--scalefactor', type = float,  default = 0.99, help = 'Scale factor for GLSDC Guess')
+parser.add_argument('--tol', type = float, default = 1E-5, help = 'Error Tolerance for GLSDC')
+
+args = parser.parse_args()
+
 # Settings to change how file runes
-sigma           = 0.1 # Given Standard Deviation 
-maxiter         = 30 # Max iteration count for GLSDC 
-scale_factor    = 0.99 # Scale factor for GLSDC Guess
-tol             = 1E-5 # Error Tolerance for GLSDC
+sigma           = args.sigma # Given Standard Deviation 
+maxiter         = args.maxiter # Max iteration count for GLSDC 
+scale_factor    = args.scalefactor # Scale factor for GLSDC Guess
+tol             = args.tol # Error Tolerance for GLSDC
 
 # Delimeter strings for prinmt statements
 delim_equals    = '='*90
@@ -47,11 +60,10 @@ def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     System Dynamics Including Variational Matrices
     Uses Numba Just-In-Time machine code compilation and caching to speed up function calls
     
-    
     Args:
         t: Time variable
-        y: State vector [x, phi.flat, psi.flat] (length 18)
-        p: Parameter vector (length 6)
+        y: State vector [x, vec(phi), vec(psi)]
+        p: Parameter vector
     
     Returns:
         Time derivative of state vector
@@ -268,10 +280,9 @@ Covariance Matrix Calculations
 ********************************************************************
 '''
 
-def create_cov_ellipse(P, mu, scale):
+def create_cov_ellipse(P, mu, scale, npoints = 100):
     
-    
-    t       = np.linspace(0, 2*pi, 100)    
+    t       = np.linspace(0, 2*pi, npoints)    
     ellipse = np.array([cos(t), sin(t)])
 
     D, V = np.linalg.eig(P)
@@ -319,12 +330,12 @@ def propagate_cov(z: np.ndarray, glsdc_traj, Lambda: np.ndarray, saveplot: bool 
         # dp/dp = I_(6x6)
         dzdz0 = np.block([[Phi, Psi], [np.zeros((6, 2)), np.eye(6)]])
         Pt[k+1, :, :] = dzdz0 @ P0 @ dzdz0.T
-        
+    
+    return xt, Pt
 
-
+def plot_cov_ellipse(sample_cov, projected_cov, sample_state, projected_state, saveplot = False, filename = 'Images/cov_ellipse'):
     # Creating cos and sin of parameter for ellipse
     t = np.linspace(0, 2*pi, 100)
-    ellipse = np.array([cos(t), sin(t)])
 
     covar_ellipse_plot, covar_ellipse_axs = plt.subplots(2, 2, layout='tight')
     for n in range(2):
@@ -332,38 +343,20 @@ def propagate_cov(z: np.ndarray, glsdc_traj, Lambda: np.ndarray, saveplot: bool 
             
             k = 2*n + i
             
-            # Get state
-            # if k = 0, uses initial state estimate
-            # if k > 0, pulls from simulated tajectory
-            if k == 0:
-                state = z[:2]
-            elif k == 1:
-                state = glsdc_traj.y[:2, 999]
-            elif k == 2:
-                state = glsdc_traj.y[:2, 1999]
-            elif k == 3:
-                state = glsdc_traj.y[:2, 2999]
+            # Get Covariance matrix from sample_cov and projected_cov
+            sample_mu = None
+            projected_mu = None
             
+            # Get state from sample_state and projected_state
+            sample_Px = None
+            projected_Px = None
             
-            # Extract Px (2x2 matrix in upper left corner) from P(t)
-            Px = Pt[k, :2, :2]
-            
-            covar_ellipse_axs[n, i].scatter(state[0], state[1], s = 1.5, color = 'blue')
-            for sigma_lvl in range(1, 4):
-                
-                cov_ellispe = create_cov_ellipse(Px, state.reshape(2, 1), sigma_lvl)
-                covar_ellipse_axs[n, i].plot(cov_ellispe[0], cov_ellispe[1], color = 'blue', label = f'{sigma_lvl}' + r'$\sigma$')
-                covar_ellipse_axs[n, i].set_title(f't = {100 * k}')
-                covar_ellipse_axs[n, i].set_xlabel(r'$x(t)$')
-                covar_ellipse_axs[n, i].set_ylabel(r'$\dot{x}(t)$')
-            
-            # covar_ellipse_axs[n, i].legend()
+            # Loop through 3 standard deviations
 
     if saveplot:
         plt.show()
         covar_ellipse_plot.savefig(filename, format='png')
-    
-    return xt, Pt, covar_ellipse_plot, covar_ellipse_axs
+
 '''
 ********************************************************************
 Sample Statistics
@@ -418,15 +411,6 @@ def monte_carlo_sim(dynamics, z_true, measured_states, niter = 1000, n_jobs = -1
         't200'  : {'mean' : np.mean(x_at_200, axis = 0), 'cov'   : np.cov(x_at_200.T)},
         't300'  : {'mean' : np.mean(x_at_300, axis = 0), 'cov'   : np.cov(x_at_300.T)}
     }
-
-    # Printing Statistics to Console
-    print(delim_dash)
-    for key,value in monte_carlo_stats.items():
-
-        print(f'Statistics for t = '+ key)
-        print(f'    - Mean: {value['mean']}')
-        print(f'    - Cov:\n{np.array2string(value['cov'])}')
-        print(np.linalg.eig(value['cov']))
     
     return monte_carlo_stats, x_at_0, x_at_100, x_at_200, x_at_300
 
@@ -435,7 +419,7 @@ def monte_carlo_sim(dynamics, z_true, measured_states, niter = 1000, n_jobs = -1
 Plotting System
 ********************************************************************
 '''
-def make_plots(saveplot = False):
+def make_sol_plots(saveplot = False):
     '''
     Function to create plots needed for project. Creates x(t) vs t, xdot(t) vs t, xdot(t) vs x(t), measurements over x(t) vs t
     '''
@@ -564,8 +548,7 @@ if __name__ == '__main__':
     print('\n' + delim_equals + '\nProducing Covariance Ellipses\n' + delim_equals)
     print(f'\nCalculating P(t) at t = 0, 100, 200, 300')
     
-    xt, Pt, cov_fig, cov_fig_axs = propagate_cov(z, glsdc_traj, Lambda, saveplot=False)
-    
+    xt, Pt = propagate_cov(z, glsdc_traj, Lambda, saveplot=False)
     
     
     print()
@@ -576,40 +559,13 @@ if __name__ == '__main__':
     
     print('\n' + delim_equals + '\nMonte Carlo Simulation\n' + delim_equals + '\n')
     
-    monte_carlo_results = monte_carlo_sim(dynamics, z_true, measured_states, niter = 100)
+    monte_carlo_stats, monte_carlo_results = monte_carlo_sim(dynamics, z_true, measured_states, niter = args.ntrials)
+    # Printing Statistics to Console
+    print(delim_dash)
+    for key,value in monte_carlo_stats.items():
+
+        print(f'Statistics for t = '+ key)
+        print(f'    - Mean: {value['mean']}')
+        print(f'    - Cov:\n{np.array2string(value['cov'])}')
+        print(np.linalg.eig(value['cov']))
     
-    # Adding Sample covariance ellipses to plot
-    for n in range(2):
-        for i in range(2):
-            k = 2*n + i
-            
-            if k == 0:
-                sample_mu = monte_carlo_results[0]['t0']['mean']
-                sample_cov = monte_carlo_results[0]['t0']['cov']
-            elif k == 1:
-                sample_mu = monte_carlo_results[0]['t100']['mean']
-                sample_cov = monte_carlo_results[0]['t100']['cov']
-            elif k == 2:
-                sample_mu = monte_carlo_results[0]['t200']['mean']
-                sample_cov = monte_carlo_results[0]['t200']['cov']
-            elif k == 3:
-                sample_mu = monte_carlo_results[0]['t300']['mean']
-                sample_cov = monte_carlo_results[0]['t300']['cov']
-            
-            for scale in range(1, 4):
-                cov_ellipse = create_cov_ellipse(sample_cov, sample_mu.reshape(2, 1), scale)              
-                cov_fig_axs[n, i].plot(cov_ellipse[0], cov_ellipse[1], '--', color = 'orange', label = f'Sample {scale}' + r'$\sigma$')
-                cov_fig_axs[n, i].scatter(sample_mu[0], sample_mu[1], s = 1.5, color = 'orange')
-                
-    # Adding true value to plot
-    for n in range(2):
-        for i in range(2):
-            k = 2*n + i
-            if k == 0:
-                true_state = x0
-            
-            else:
-                true_state = measured_states.y[:2, measured_states.t==k*100]
-            cov_fig_axs[n, i].scatter(true_state[0], true_state[1], color = 'k')
-    
-    plt.show()
