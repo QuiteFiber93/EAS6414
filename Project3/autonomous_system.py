@@ -56,89 +56,233 @@ teval           = [i/10 for i in range(1, 3001)] # Times at which system is samp
 System Dynamics
 ********************************************************************
 '''
+
 @njit(cache=True)
-def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
+def dynamics_autonomous(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     """
-    System Dynamics Including Variational Matrices
+    Autonomous System Dynamics Including Variational Matrices
+    Augmented state: [x, xdot, theta, vec(Phi), vec(Psi)]
+    where theta = p5*t + p6
+    
     Uses Numba Just-In-Time machine code compilation and caching to speed up function calls
     
     Args:
-        t: Time variable
-        y: State vector [x, vec(phi), vec(psi)]
-        p: Parameter vector
+        t: Time variable (not used in autonomous formulation)
+        y: State vector [x, xdot, theta, vec(phi_3x3), vec(psi_3x6)]
+        p: Parameter vector [p1, p2, p3, p4, p5, p6]
     
     Returns:
         Time derivative of state vector
     """
     # Extract states
-    x = y[0:2]
+    x = y[0:3]  # [x, xdot, theta]
     
     # Extract parameters
     p1, p2, p3, p4, p5, p6 = p
     
-    # Computing a often repeated value
-    theta = p5 * t + p6
+    # theta is now a state variable
+    theta = x[2]
     
-    # df/dp (2x6)
-    dfdp        = np.zeros((2, 6))
-    dfdp[1, 0]  = -x[1]
-    dfdp[1, 1]  = -x[0]
-    dfdp[1, 2]  = -x[0]**3
-    dfdp[1, 3]  = -sin(theta)
-    dfdp[1, 4]  = -p4 * t * cos(theta)
-    dfdp[1, 5]  = -p4 * cos(theta)
+    # df/dp (3x6) - partial derivatives of dynamics w.r.t. parameters
+    dfdp = np.zeros((3, 6))
+    dfdp[1, 0] = -x[1]                      # d(xddot)/dp1
+    dfdp[1, 1] = -x[0]                      # d(xddot)/dp2
+    dfdp[1, 2] = -x[0]**3                   # d(xddot)/dp3
+    dfdp[1, 3] = -sin(theta)                # d(xddot)/dp4
+    dfdp[1, 4] = 0.0                        # d(xddot)/dp5
+    dfdp[1, 5] = 0.0                        # d(xddot)/dp6
+    dfdp[2, 4] = 1.0                        # d(thetadot)/dp5
+    dfdp[2, 5] = 0.0                        # d(thetadot)/dp6
     
-    # xdot and xddot
-    xdot    = np.empty(2)
+    # State derivatives
+    xdot = np.empty(3)
     xdot[0] = x[1]
     xdot[1] = -(p1 * x[1] + p2 * x[0] + p3 * x[0]**3 + p4 * sin(theta))
+    xdot[2] = p5  # theta_dot = p5
     
-    # Phi (2x2)
-    # Phidot = A @ Phi
+    # Phi (3x3) - state transition matrix
+    # Phidot = A @ Phi, where A = df/dx
     # A = [
-    #     [0, 1]
-    #     [-p2 - 3p3x**2, -p1]
+    #     [0,                1,              0            ]
+    #     [-p2 - 3*p3*x^2,  -p1,            -p4*cos(theta)]
+    #     [0,                0,              0            ]
     # ]
-    phi             = y[2:6].reshape((2, 2))
-    phidot          = np.empty((2, 2))
-    phidot[0, 0]    = phi[1, 0]
-    phidot[0, 1]    = phi[1, 1]
-    phidot[1, 0]    = -(p2 + 3.0 * p3 * x[0]**2) * phi[0, 0] - p1 * phi[1, 0]
-    phidot[1, 1]    = -(p2 + 3.0 * p3 * x[0]**2) * phi[0, 1] - p1 * phi[1, 1]
+    phi = y[3:12].reshape((3, 3))
+    phidot = np.empty((3, 3))
     
-    # Psi (2x6)
+    # First row: d(xdot)/dx
+    phidot[0, 0] = phi[1, 0]
+    phidot[0, 1] = phi[1, 1]
+    phidot[0, 2] = phi[1, 2]
+    
+    # Second row: d(xddot)/dx
+    a21 = -(p2 + 3.0 * p3 * x[0]**2)
+    a22 = -p1
+    a23 = -p4 * cos(theta)
+    phidot[1, 0] = a21 * phi[0, 0] + a22 * phi[1, 0] + a23 * phi[2, 0]
+    phidot[1, 1] = a21 * phi[0, 1] + a22 * phi[1, 1] + a23 * phi[2, 1]
+    phidot[1, 2] = a21 * phi[0, 2] + a22 * phi[1, 2] + a23 * phi[2, 2]
+    
+    # Third row: d(thetadot)/dx = [0, 0, 0]
+    phidot[2, 0] = 0.0
+    phidot[2, 1] = 0.0
+    phidot[2, 2] = 0.0
+    
+    # Psi (3x6) - parameter sensitivity matrix
     # Psidot = A @ Psi + df/dp
-    # A = [
-    #     [0, 1]
-    #     [-p2 - 3p3x**2, -p1]
-    # ]
-    # df/dp = [
-    #     [Zeros]
-    #     [-xdot, -x, -x**3, -sin(theta), -p4*t*cos(theta), -p4cos(theta)]
-    # ]
-    psi = y[6:18].reshape((2, 6))
-    psidot = np.empty((2, 6))
+    psi = y[12:30].reshape((3, 6))
+    psidot = np.empty((3, 6))
+    
     for j in range(6):
-        psidot[0, j] = psi[1, j]
-        psidot[1, j] = -(p2 + 3.0 * p3 * x[0]**2) * psi[0, j] - p1 * psi[1, j] + dfdp[1, j]
+        # First row: d(xdot)/dx * Psi + d(xdot)/dp
+        psidot[0, j] = psi[1, j] + dfdp[0, j]
+        
+        # Second row: d(xddot)/dx * Psi + d(xddot)/dp
+        psidot[1, j] = a21 * psi[0, j] + a22 * psi[1, j] + a23 * psi[2, j] + dfdp[1, j]
+        
+        # Third row: d(thetadot)/dx * Psi + d(thetadot)/dp
+        psidot[2, j] = dfdp[2, j]
     
     # Concatenate results
-    statedot          = np.empty(18)
-    statedot[0:2]     = xdot
-    statedot[2:6]     = phidot.ravel()
-    statedot[6:18]    = psidot.ravel()
+    statedot = np.empty(30)
+    statedot[0:3] = xdot
+    statedot[3:12] = phidot.ravel()
+    statedot[12:30] = psidot.ravel()
     
     return statedot
-    
 
-'''
-********************************************************************
-Implementing GLSDC from Tapley, Shultz, and Born 2004
-********************************************************************
-'''
+
+def validate_variational_matrices_autonomous(dynamics, x0, p, tspan, delta=1e-6):
+    """
+    Validate Phi and Psi matrices using finite differences for AUTONOMOUS system
+    
+    For the augmented autonomous system with theta as a state variable
+    State vector: [x, xdot, theta, vec(Phi_3x3), vec(Psi_3x6)]
+    
+    Args:
+        dynamics: The autonomous dynamics function
+        x0: Initial state [x(0), xdot(0)]
+        p: Parameter vector [p1, p2, p3, p4, p5, p6]
+        tspan: Time span for integration
+        delta: Finite difference step size
+    
+    Returns:
+        Dictionary with validation results at multiple time points
+    """
+    print("\nValidating Variational Matrices using Finite Differences (Autonomous)")
+    print(delim_dash)
+    
+    # Times to check
+    test_times = [10, 50, 100, 150, 200, 250, 300]
+    
+    # Augmented initial condition: [x(0), xdot(0), theta(0)]
+    theta0 = p[5]  # theta(0) = p6
+    x0_aug = np.array([x0[0], x0[1], theta0])
+    
+    # Initial conditions for Phi and Psi
+    phi0 = np.eye(3)
+    psi0 = np.zeros((3, 6))
+    
+    # Reference trajectory with Phi and Psi
+    state0 = np.concatenate([x0_aug, phi0.flatten(), psi0.flatten()])
+    sol_ref = solve_ivp(dynamics, tspan, state0, t_eval=test_times, 
+                        args=(p,), rtol=1e-10, atol=1e-10)
+    
+    validation_results = {}
+    max_phi_error = 0
+    max_psi_error = 0
+    
+    for idx, t in enumerate(test_times):
+        print(f"\n  t = {t:3d}s:", end=" ")
+        
+        # Extract Phi and Psi from solution
+        phi_analytic = sol_ref.y[3:12, idx].reshape(3, 3)
+        psi_analytic = sol_ref.y[12:30, idx].reshape(3, 6)
+        
+        # ==========================================
+        # Validate Phi using finite differences
+        # ==========================================
+        # Phi(t,t0) = ∂x_aug(t)/∂x_aug(t0) where x_aug = [x, xdot, theta]
+        phi_fd = np.zeros((3, 3))
+        
+        for i in range(3):
+            # Perturb initial augmented state
+            x0_aug_pert = x0_aug.copy()
+            x0_aug_pert[i] += delta
+            
+            # Integrate perturbed trajectory
+            state0_pert = np.concatenate([x0_aug_pert, phi0.flatten(), psi0.flatten()])
+            sol_pert = solve_ivp(dynamics, [0, t], state0_pert, 
+                                t_eval=[t], args=(p,), rtol=1e-10, atol=1e-10)
+            
+            # Finite difference approximation
+            x_pert = sol_pert.y[0:3, 0]  # Augmented state at time t with perturbed IC
+            x_ref = sol_ref.y[0:3, idx]  # Reference augmented state at time t
+            phi_fd[:, i] = (x_pert - x_ref) / delta
+        
+        # Compute relative error for Phi
+        phi_error = np.linalg.norm(phi_analytic - phi_fd) / np.linalg.norm(phi_fd)
+        max_phi_error = max(max_phi_error, phi_error)
+        
+        # ==========================================
+        # Validate Psi using finite differences
+        # ==========================================
+        # Psi(t,t0) = ∂x_aug(t)/∂p
+        psi_fd = np.zeros((3, 6))
+        
+        for j in range(6):
+            # Perturb parameter
+            p_pert = p.copy()
+            p_pert[j] += delta
+            
+            # If perturbing p6, need to update theta(0) as well
+            if j == 5:
+                x0_aug_pert = x0_aug.copy()
+                x0_aug_pert[2] += delta  # theta(0) = p6
+            else:
+                x0_aug_pert = x0_aug.copy()
+            
+            # Integrate with perturbed parameter
+            state0_pert = np.concatenate([x0_aug_pert, phi0.flatten(), psi0.flatten()])
+            sol_pert = solve_ivp(dynamics, [0, t], state0_pert, 
+                                t_eval=[t], args=(p_pert,), rtol=1e-10, atol=1e-10)
+            
+            # Finite difference approximation
+            x_pert = sol_pert.y[0:3, 0]
+            x_ref = sol_ref.y[0:3, idx]
+            psi_fd[:, j] = (x_pert - x_ref) / delta
+        
+        # Compute relative error for Psi
+        psi_error = np.linalg.norm(psi_analytic - psi_fd) / np.linalg.norm(psi_fd)
+        max_psi_error = max(max_psi_error, psi_error)
+        
+        print(f"Φ error: {phi_error:.2e}, Ψ error: {psi_error:.2e}")
+        
+        # Store detailed results
+        validation_results[t] = {
+            'phi_analytic': phi_analytic,
+            'phi_fd': phi_fd,
+            'phi_error': phi_error,
+            'phi_max_element_error': np.max(np.abs(phi_analytic - phi_fd)),
+            'psi_analytic': psi_analytic,
+            'psi_fd': psi_fd,
+            'psi_error': psi_error,
+            'psi_max_element_error': np.max(np.abs(psi_analytic - psi_fd))
+        }
+    
+    print("\n" + delim_dash)
+    print(f"Maximum Φ relative error: {max_phi_error:.2e}")
+    print(f"Maximum Ψ relative error: {max_psi_error:.2e}")
+    
+    if max_phi_error < 1e-4 and max_psi_error < 1e-4:
+        print("✓ Validation PASSED: Errors < 1e-4 indicate excellent agreement.\n")
+    else:
+        print("✗ Validation WARNING: Errors larger than expected. Check implementation.\n")
+    
+    return validation_results
 
 GLSDC_SOL = namedtuple('GLSDC_SOL', ['z', 'traj', 'Lambda'])
-def glsdc(dynamics, 
+def glsdc_autonomous(dynamics, 
           z: NDArray,
           ytilde: NDArray, 
           teval: list = teval,
@@ -149,12 +293,12 @@ def glsdc(dynamics,
           verbose: bool = False
           ):
     """
-    Implements the GLSDC Algorithm as described in 
-    Statistical Orbit Determination by Tapley, Schultz, and Born 2004
+    Implements the GLSDC Algorithm for AUTONOMOUS system formulation
+    State vector: [x, xdot, theta, vec(Phi_3x3), vec(Psi_3x6)]
 
     Args:
-        dynamics (function): Function Containintg system dynamics
-        z (NDArray): Parameters to be estimated
+        dynamics (function): Function containing autonomous system dynamics
+        z (NDArray): Parameters to be estimated [x(0), xdot(0), p1, p2, p3, p4, p5, p6]
         ytilde (NDArray): Measurements
         teval (list, optional): Times at which solution to dynamics must be returned. Defaults to teval.
         tspan (list, optional): Interval over which system is integrated. Defaults to tspan.
@@ -164,12 +308,12 @@ def glsdc(dynamics,
         verbose (bool, optional): Determines whether to print statements concerning algorithm progress. Defaults to False.
 
     Returns:
-        namedtuple: namedtuple containing estimate for z, the trajectory using z as the initial coniditon, and Information Matrix
+        namedtuple: namedtuple containing estimate for z, the trajectory using z as the initial condition, and Information Matrix
     """
     
-    # Initializng / declaring relevant values
-    phi0    = np.eye(2)
-    psi0    = np.zeros((2, 6))
+    # Initializing / declaring relevant values
+    phi0    = np.eye(3)  # 3x3 for autonomous system
+    psi0    = np.zeros((3, 6))
     
     old_cost = np.inf   # old_cost is the cost of the most recently run iteration
     new_cost = 1        # new_cost is the cost of the current iteration
@@ -180,8 +324,8 @@ def glsdc(dynamics,
     # Weight Matrix
     W_diag      = 1.0 / ((1 + scale_with_t * teval_arr) * sigma**2)  # Diagonal weight matrix elements
     
-    # H matrix selector (avoid repeated array creation)
-    dgdx = np.array([[1.0, 0.0]])
+    # H matrix selector: we measure x (first component of augmented state)
+    dgdx = np.array([[1.0, 0.0, 0.0]])  # [∂g/∂x, ∂g/∂xdot, ∂g/∂theta]
     
     if verbose:
         print(f'\n{"Iter":>5} {"x(0)":>8} {"xdot(0)":>8} {"p1":>8} {"p2":>8} '
@@ -191,9 +335,14 @@ def glsdc(dynamics,
     for i in range(maxiter):
         
         # Initialize for iteration
-        # Extracting x0 and p estimates from z variable
-        x0_guess    = z[:2]
+        # Extracting x0, xdot0 and p estimates from z variable
+        x0_guess    = z[0]
+        xdot0_guess = z[1]
         p_guess     = z[2:]
+        
+        # For autonomous system, theta(0) = p6
+        theta0_guess = p_guess[5]
+        x_aug_0 = np.array([x0_guess, xdot0_guess, theta0_guess])
         
         # Record cost of most recent iteration
         old_cost    = new_cost
@@ -203,7 +352,7 @@ def glsdc(dynamics,
         N       = np.zeros(8)
         
         # Set up initial state according to current estimate of z
-        initial_state_guess = np.concatenate([x0_guess, phi0.flatten(), psi0.flatten()])
+        initial_state_guess = np.concatenate([x_aug_0, phi0.flatten(), psi0.flatten()])
         
         # Integrate trajectory
         glsdc_guess_traj    = solve_ivp(
@@ -217,32 +366,56 @@ def glsdc(dynamics,
         )
         
         # Checking to see if the solve_ivp function actually integrated the entire interval
-        # Sometimes I ran into errors about required step sizes being too small and the 
-        # function exited integration prematurely. This just checks and lets me know that is the case
         if glsdc_guess_traj.status == -1:
             print(f"Integration failed: {glsdc_guess_traj.message}")
             return z, glsdc_guess_traj, Lambda
         
-        # Vectorized error computation
+        # Vectorized error computation (measure x only, first component)
         err = ytilde - glsdc_guess_traj.y[0, :]  # Shape: (n_measurements,)
         
         # The performance index is given as J = err^T @ W @ err
-        # The matrix multiplication is converted to elementwise multiplication and summation
         new_cost = np.sum(W_diag * err**2)
         
         # Extracting Phi and Psi data from solution
-        phi_data = glsdc_guess_traj.y[2:6, :].T # dim = len(teval) x 4
-        psi_data = glsdc_guess_traj.y[6:18, :].T # dim = len(teval) x 12
+        phi_data = glsdc_guess_traj.y[3:12, :].T # dim = len(teval) x 9 (3x3 flattened)
+        psi_data = glsdc_guess_traj.y[12:30, :].T # dim = len(teval) x 18 (3x6 flattened)
         
         for k in range(len(teval)):
             
             # Reshape variational matrices
-            phi_k = phi_data[k].reshape(2, 2) # Is now (2x2)
-            psi_k = psi_data[k].reshape(2, 6) # Is now (2x6)
+            phi_k = phi_data[k].reshape(3, 3) # Is now (3x3)
+            psi_k = psi_data[k].reshape(3, 6) # Is now (3x6)
             
-            # H_i = dg_i / dz = [dg/dx * dx/dx(0), dg/dx * dx/dp]
-            # H_i = [[1, 0] * Phi, [1, 0] * Psi]
-            H_i = np.concatenate([ dgdx @ phi_k, dgdx @ psi_k], axis=1)
+            # For autonomous system with augmented state [x, xdot, theta]:
+            # We need ∂x(t)/∂z where z = [x(0), xdot(0), p]^T
+            # 
+            # Note: theta(0) = p6, so ∂theta(0)/∂p6 = 1
+            # Thus we need to account for this dependency
+            
+            # Phi gives us ∂[x, xdot, theta](t)/∂[x(0), xdot(0), theta(0)]
+            # Psi gives us ∂[x, xdot, theta](t)/∂[p1, p2, p3, p4, p5, p6]
+            
+            # We want ∂x(t)/∂[x(0), xdot(0), p1, p2, p3, p4, p5, p6]
+            # 
+            # ∂x(t)/∂x(0) = Phi[0, 0]
+            # ∂x(t)/∂xdot(0) = Phi[0, 1]
+            # ∂x(t)/∂p_j = Psi[0, j] + Phi[0, 2] * ∂theta(0)/∂p_j
+            #
+            # where ∂theta(0)/∂p6 = 1 and ∂theta(0)/∂p_j = 0 for j ≠ 6
+            
+            # H_i = dg_i / dz = [∂x/∂x(0), ∂x/∂xdot(0), ∂x/∂p1, ..., ∂x/∂p6]
+            H_i = np.zeros((1, 8))
+            
+            # Derivatives w.r.t. initial states
+            H_i[0, 0] = phi_k[0, 0]  # ∂x(t)/∂x(0)
+            H_i[0, 1] = phi_k[0, 1]  # ∂x(t)/∂xdot(0)
+            
+            # Derivatives w.r.t. parameters
+            for j in range(6):
+                if j == 5:  # p6 affects theta(0) directly
+                    H_i[0, 2 + j] = psi_k[0, j] + phi_k[0, 2]
+                else:
+                    H_i[0, 2 + j] = psi_k[0, j]
             
             # Accumulate normal equations
             Lambda += (H_i.T * W_diag[k]) @ H_i  # (8, 8)
@@ -274,13 +447,6 @@ def glsdc(dynamics,
     
     return GLSDC_SOL(z, glsdc_guess_traj, Lambda)
 
- 
-'''
-********************************************************************
-Covariance Matrix Calculations
-********************************************************************
-'''
-
 def create_cov_ellipse(P: np.ndarray, mu: np.ndarray, scale: float = 1.0, npoints = 100) -> np.ndarray:
     """Create covariance ellipse points
 
@@ -300,119 +466,133 @@ def create_cov_ellipse(P: np.ndarray, mu: np.ndarray, scale: float = 1.0, npoint
     cov_ellispe = V @ (scale * np.sqrt(D) * ellipse.T).T + mu.reshape(2, 1)
     
     return cov_ellispe
+
+def propagate_cov_autonomous(z: np.ndarray, glsdc_traj, Lambda: np.ndarray):
+    """
+    Propagates the covariance of a GLSDC estimate for autonomous system
     
-
-def propagate_cov(z: np.ndarray, glsdc_traj, Lambda: np.ndarray):
-    """Propogates the covariancce of a glsdc estimate
-
+    Args:
+        z: Estimated parameters [x(0), xdot(0), p1, ..., p6]
+        glsdc_traj: Solution from GLSDC with augmented state
+        Lambda: Information matrix from GLSDC
+    
     Returns:
-        Tuple(xt, Pt): The state, xt, and the covariance matrix, Pt, at t=0, 100, 200, 300
+        Tuple(xt, Pt): The state [x, xdot] and covariance at t=0, 100, 200, 300
     """
     # Times at which system is sampled
     sample_times = [100, 200, 300]
     
-    # Creating variable to hold values at each time
+    # Creating variable to hold values at each time (only x and xdot, not theta)
     xt = np.zeros((2, 4))
     Pt = np.zeros((4, 8, 8))
 
-    # Assining t=0
+    # Assigning t=0
     xt[:, 0] = z[:2] 
     P0 = np.linalg.inv(Lambda)
     Pt[0, :, :] = P0
 
     # Using solution calculated from GLSDC to construct Phi(t) and Psi(t)
-    for k,t in enumerate(sample_times):
+    for k, t in enumerate(sample_times):
         
-        # Extracting state variable
+        # Extracting state variable (x and xdot only, not theta)
         xt[:, k + 1] = glsdc_traj.y[:2, t * 10 - 1]
         
-        # Extracting Phi and Psi at t from glsdc estimate trajectory
-        PhiPsiVec = glsdc_traj.y[2:, t * 10 - 1]
+        # Extracting Phi (3x3) and Psi (3x6) at t from glsdc estimate trajectory
+        PhiPsiVec = glsdc_traj.y[3:, t * 10 - 1]
         
         # Reshaping Phi and Psi to their matrix forms
-        Phi = PhiPsiVec[:4].reshape(2,2)
-        Psi = PhiPsiVec[4:].reshape(2, 6)
+        Phi_aug = PhiPsiVec[:9].reshape(3, 3)   # 3x3 for [x, xdot, theta]
+        Psi_aug = PhiPsiVec[9:].reshape(3, 6)   # 3x6
         
-        # dz/dz0 = [[dx/dx0, dx/dp], [dp/dx, dp/dp]]
-        # dx/dx0 = Phi(t)
-        # dx/dp = Psi(t)
-        # dp/dx = 0
-        # dp/dp = I_(6x6)
-        dzdz0 = np.block([[Phi, Psi], [np.zeros((6, 2)), np.eye(6)]])
-        Pt[k+1, :, :] = dzdz0 @ P0 @ dzdz0.T
+        # We want ∂[x, xdot](t)/∂z where z = [x(0), xdot(0), p1, ..., p6]
+        # 
+        # From augmented system:
+        # ∂[x, xdot, theta](t)/∂[x(0), xdot(0), theta(0)] = Phi_aug
+        # ∂[x, xdot, theta](t)/∂[p1, ..., p6] = Psi_aug
+        #
+        # Since theta(0) = p6, we have:
+        # ∂[x, xdot](t)/∂[x(0), xdot(0)] = Phi_aug[0:2, 0:2]
+        # ∂[x, xdot](t)/∂p_j = Psi_aug[0:2, j] + Phi_aug[0:2, 2] * ∂theta(0)/∂p_j
+        
+        # Build the sensitivity matrix for [x, xdot] w.r.t. z
+        Phi_reduced = Phi_aug[0:2, 0:2]  # 2x2: ∂[x,xdot]/∂[x(0),xdot(0)]
+        
+        Psi_reduced = Psi_aug[0:2, :].copy()  # 2x6: Start with ∂[x,xdot]/∂p
+        Psi_reduced[:, 5] += Phi_aug[0:2, 2]  # Add chain rule term for p6
+        
+        # dz/dz0 = [[dx/dx0, dx/dp], [dp/dx0, dp/dp]]
+        # where z = [x(0), xdot(0), p1, ..., p6]
+        dxdz0 = np.block([[Phi_reduced, Psi_reduced], 
+                          [np.zeros((6, 2)), np.eye(6)]])  # 8x8
+        
+        Pt[k+1, :, :] = dxdz0 @ P0 @ dxdz0.T
     
     return xt, Pt
 
-'''
-********************************************************************
-Monte Carlo Simulation and Sample Statistics
-********************************************************************
-'''
 
-def monte_carlo_sim(dynamics, z_true, measured_states, niter = 1000, n_jobs = -1):
-    """Performs a Monte Carlo Simulation of the GLSDC Algorithm. This function will use joblib to multithread.
+def monte_carlo_sim_autonomous(dynamics, z_true, measured_states, niter=1000, n_jobs=-1):
+    """
+    Performs a Monte Carlo Simulation of the GLSDC Algorithm for autonomous system.
+    This function will use joblib to multithread.
 
     Args:
-        dynamics (function): Function containing sytstem dynamcis
-        z_true (np.ndarray): True parameters to be estimated
-        measured_states (_type_): Solution containing the measured states from the true trajectory
+        dynamics (function): Function containing autonomous system dynamics
+        z_true (np.ndarray): True parameters to be estimated [x(0), xdot(0), p1, ..., p6]
+        measured_states: Solution containing the measured states from the true trajectory
         niter (int, optional): Number of Monte Carlo Trials to perform. Defaults to 1000.
         n_jobs (int, optional): Number of processors to use. Defaults to -1.
 
     Returns:
-        _type_: _description_
+        monte_carlo_stats: Dictionary with statistics at t=0, 100, 200, 300
+        x_at_*: Arrays of state estimates from all trials
     """
     
     print(f'Running Monte Carlo simulation with {niter} iterations...')
-    progress_bar = tqdm(range(niter), desc = 'Monte Carlo Simulation of GLSDC Results')
+    progress_bar = tqdm(range(niter), desc='Monte Carlo Simulation of GLSDC Results')
     
-    # MonteCarloTrial is a namedtuple to containt the results we care about from a single trial
+    # MonteCarloTrial is a namedtuple to contain the results we care about from a single trial
     MonteCarloTrial = namedtuple('MonteCarloTrial', ['t0', 't100', 't200', 't300', 'p'])
     
-    # This function will be used to help implement multi processing of 1000 glsdc functin calls
+    # This function will be used to help implement multi processing of 1000 glsdc function calls
     def single_glsdc_run(seed):
         
         # Setting seed for repeatability
         rng = np.random.default_rng(seed=seed)
         
         # Create Noise Measurements for single monte carlo trial
-        ytilde_trial = measured_states.y[0, :] + rng.normal(loc=0, scale=sigma, size = len(teval))
+        ytilde_trial = measured_states.y[0, :] + rng.normal(loc=0, scale=sigma, size=len(teval))
         
         # Run GLSDC algorithm for single monte carlo trial
-        z_trial, glsdc_trial, _ = glsdc(dynamics, scale_factor*z_true, ytilde_trial)
+        z_trial, glsdc_trial, _ = glsdc_autonomous(dynamics, scale_factor*z_true, ytilde_trial)
         
-        # Extract x at t = 0, 100, 200, 300, and p
-        return MonteCarloTrial(z_trial[:2], # x(0)
-                               np.squeeze(glsdc_trial.y[:2, 999]), # x(100)
-                               np.squeeze(glsdc_trial.y[:2, 1999]), # x(200)
-                               np.squeeze(glsdc_trial.y[:2, 2999]), # x(300)
-                               z_trial[2:]) # p
+        # Extract x and xdot (not theta) at t = 0, 100, 200, 300, and p
+        # Note: glsdc_trial.y has augmented state [x, xdot, theta, ...]
+        return MonteCarloTrial(z_trial[:2],                      # x(0), xdot(0)
+                               np.squeeze(glsdc_trial.y[:2, 999]),   # x(100), xdot(100)
+                               np.squeeze(glsdc_trial.y[:2, 1999]),  # x(200), xdot(200)
+                               np.squeeze(glsdc_trial.y[:2, 2999]),  # x(300), xdot(300)
+                               z_trial[2:])                          # p
         
     
     # Perform Monte Carlo Parallelization
-    trial_results = Parallel(n_jobs = n_jobs)(delayed(single_glsdc_run)(2025 + n) for n in progress_bar)
+    trial_results = Parallel(n_jobs=n_jobs)(delayed(single_glsdc_run)(2025 + n) for n in progress_bar)
     
     # Parsing results
-    x_at_0      = np.array([trial.t0 for trial in trial_results])
-    x_at_100    = np.array([trial.t100 for trial in trial_results])
-    x_at_200    = np.array([trial.t200 for trial in trial_results])
-    x_at_300    = np.array([trial.t300 for trial in trial_results])
+    x_at_0   = np.array([trial.t0 for trial in trial_results])
+    x_at_100 = np.array([trial.t100 for trial in trial_results])
+    x_at_200 = np.array([trial.t200 for trial in trial_results])
+    x_at_300 = np.array([trial.t300 for trial in trial_results])
     
     # Calculate Sample Statistics
     monte_carlo_stats = {
-        't0'    : {'mean' : np.mean(x_at_0, axis = 0),   'cov'   : np.cov(x_at_0.T)},
-        't100'  : {'mean' : np.mean(x_at_100, axis = 0), 'cov'   : np.cov(x_at_100.T)},
-        't200'  : {'mean' : np.mean(x_at_200, axis = 0), 'cov'   : np.cov(x_at_200.T)},
-        't300'  : {'mean' : np.mean(x_at_300, axis = 0), 'cov'   : np.cov(x_at_300.T)}
+        't0'   : {'mean': np.mean(x_at_0, axis=0),   'cov': np.cov(x_at_0.T)},
+        't100' : {'mean': np.mean(x_at_100, axis=0), 'cov': np.cov(x_at_100.T)},
+        't200' : {'mean': np.mean(x_at_200, axis=0), 'cov': np.cov(x_at_200.T)},
+        't300' : {'mean': np.mean(x_at_300, axis=0), 'cov': np.cov(x_at_300.T)}
     }
     
     return monte_carlo_stats, x_at_0, x_at_100, x_at_200, x_at_300
 
-'''
-********************************************************************
-Plotting System
-********************************************************************
-'''
 def make_sol_plots(saveplot = False):
     
     '''
@@ -478,7 +658,6 @@ def make_sol_plots(saveplot = False):
         
     return solution_fig, phase_portrait, measurement_fig
 
-
 def plot_cov_ellipse(sample_cov, projected_cov, sample_states, projected_state, true_states, saveplot=False, filename = 'Images/cov_ellipse.png'):
     fig, axs = plt.subplots(2, 2, figsize = (12, 10), layout='tight')
     
@@ -526,6 +705,11 @@ def plot_cov_ellipse(sample_cov, projected_cov, sample_states, projected_state, 
         fig.savefig(filename, dpi = 300)
             
     return fig
+
+# ============================================================================
+# MAIN EXECUTION BLOCK FOR AUTONOMOUS SYSTEM
+# ============================================================================
+
 if __name__ == '__main__':
     print(delim_equals + '\nEAS 6414 Project 3: Initial State and Parameter Estimation\n' + delim_equals)
     print('\nGiven Values\n' + delim_dash)
@@ -537,28 +721,33 @@ if __name__ == '__main__':
     
     '''
     ********************************************************************
-    Integrating System Dynamics
+    Integrating Autonomous System Dynamics
     ********************************************************************
     '''
 
-    # Initial State
-    phi0    = np.eye(2)
-    psi0    = np.zeros((2, 6))
-    state0  = np.concatenate([x0, phi0.flatten(), psi0.flatten()])
+    # Initial State for Autonomous System: [x, xdot, theta]
+    theta0 = p[5]  # theta(0) = p6
+    x0_aug = np.array([x0[0], x0[1], theta0])
+    
+    phi0 = np.eye(3)        # 3x3 for autonomous system
+    psi0 = np.zeros((3, 6))
+    state0 = np.concatenate([x0_aug, phi0.flatten(), psi0.flatten()])
 
     print(delim_equals + '\nTask 1: Simulating Motion, Measurements, and Validating Matrices\n' + delim_equals)
-    print("\nIntegrating System Dynamics ...")
+    print("\nIntegrating Autonomous System Dynamics ...")
 
-    # Integrating System
-    simulated_motion    = solve_ivp(dynamics, tspan, state0, args = (p,), rtol = 1E-10, atol=1E-10)
-    measured_states     = solve_ivp(dynamics, tspan, state0, t_eval = teval, args = (p,), rtol = 1E-10, atol=1E-10)
+    # Integrating Autonomous System
+    simulated_motion = solve_ivp(dynamics_autonomous, tspan, state0, args=(p,), 
+                                 rtol=1E-10, atol=1E-10)
+    measured_states = solve_ivp(dynamics_autonomous, tspan, state0, t_eval=teval, 
+                                args=(p,), rtol=1E-10, atol=1E-10)
     
     # Validating State Transition Matrix
     print('\nValidating Variational Matrices ...\n' + delim_dash)
     
-    # times at which to test for validation
-    test_times = [10, 50, 100, 150, 200, 250, 300]
-
+    # Validate variational matrices for autonomous system
+    print('\nValidating Variational Matrices ...')
+    validation_results = validate_variational_matrices_autonomous(dynamics_autonomous, x0, p, tspan)
 
     """
     ********************************************************************
@@ -570,23 +759,23 @@ if __name__ == '__main__':
     rng = np.random.default_rng(seed=2025)
 
     # adding gaussian noise to measurements
-    ytilde = measured_states.y[0, :] + rng.normal(loc=0, scale=sigma, size = len(teval))
+    ytilde = measured_states.y[0, :] + rng.normal(loc=0, scale=sigma, size=len(teval))
     
-    # Estimating z = [x^T, p^T]^T
+    # Estimating z = [x(0), xdot(0), p^T]^T
     z_true = np.concatenate([x0, p])
 
     # Adjusting to create an initial guess
     z = scale_factor * z_true
 
-    print(delim_equals + '\nTask 2: GLSDC Algorithm\n'+delim_equals)
+    print(delim_equals + '\nTask 2: GLSDC Algorithm (Autonomous Formulation)\n' + delim_equals)
     
     '''
     ********************************************************************
-    Implementing GLSDC from Tapley, Shultz, and Born 2004
+    Implementing GLSDC for Autonomous System
     ********************************************************************
     '''
     
-    z, glsdc_traj, Lambda = glsdc(dynamics, z, ytilde, verbose = True)
+    z, glsdc_traj, Lambda = glsdc_autonomous(dynamics_autonomous, z, ytilde, verbose=True)
 
     print('Final Estimate')
     x0_guess = z[:2]
@@ -597,42 +786,42 @@ if __name__ == '__main__':
     
     '''
     ********************************************************************
-    Covariance Propagation
+    Covariance Propagation for Autonomous System
     ********************************************************************
     '''
     print('\n' + delim_equals + '\nProducing Covariance Ellipses\n' + delim_equals)
     print(f'\nCalculating P(t) at t = 0, 100, 200, 300')
     
-    xt, Pt = propagate_cov(z, glsdc_traj, Lambda)
+    xt, Pt = propagate_cov_autonomous(z, glsdc_traj, Lambda)
     
     '''
     ********************************************************************
-    Monte Carlo Simulation
+    Monte Carlo Simulation for Autonomous System
     ********************************************************************
     '''
     
     print('\n' + delim_equals + '\nMonte Carlo Simulation\n' + delim_equals + '\n')
     
-    monte_carlo_stats, x_at_0, x_at_100, x_at_200, x_at_300 = monte_carlo_sim(dynamics, z_true, measured_states, niter = args.ntrials)
+    monte_carlo_stats, x_at_0, x_at_100, x_at_200, x_at_300 = monte_carlo_sim_autonomous(
+        dynamics_autonomous, z_true, measured_states, niter=args.ntrials)
     
     # Printing Statistics to Console
-    print(delim_dash + '\nMonte Carlo Statsitcs')
+    print(delim_dash + '\nMonte Carlo Statistics')
        
-    for key,value in monte_carlo_stats.items():
-
-        print(f'Statistics for t = '+ key)
-        print(f'    - Mean: {value['mean']}')
-        print(f'    - Cov:\n{np.array2string(value['cov'])}')
+    for key, value in monte_carlo_stats.items():
+        print(f'Statistics for t = ' + key)
+        print(f'    - Mean: {value["mean"]}')
+        print(f'    - Cov:\n{np.array2string(value["cov"])}')
         print(np.linalg.eig(value['cov']))
         
     # Collecting sample statistics for plotting
-    sample_states       = np.zeros((2, 4))
+    sample_states = np.zeros((2, 4))
     sample_states[:, 0] = monte_carlo_stats['t0']['mean']
     sample_states[:, 1] = monte_carlo_stats['t100']['mean']
     sample_states[:, 2] = monte_carlo_stats['t200']['mean']
     sample_states[:, 3] = monte_carlo_stats['t300']['mean']
     
-    sample_cov    = np.zeros((4, 2, 2))
+    sample_cov = np.zeros((4, 2, 2))
     sample_cov[0] = monte_carlo_stats['t0']['cov']
     sample_cov[1] = monte_carlo_stats['t100']['cov']
     sample_cov[2] = monte_carlo_stats['t200']['cov']
@@ -678,11 +867,9 @@ if __name__ == '__main__':
     '''
     
     # Plotting Covariance Ellipses
-    cov_plot = plot_cov_ellipse(sample_cov, Pt[:, :2, :2], sample_states, xt, true_states, saveplot=True)
+    cov_plot = plot_cov_ellipse(sample_cov, Pt[:, :2, :2], sample_states, xt, true_states, 
+                                 saveplot=True, filename='Images/cov_ellipse_autonomous.png')
     
     task1 = make_sol_plots(True)
     
     plt.show()
-    
-        
-        
