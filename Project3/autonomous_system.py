@@ -27,6 +27,8 @@ parser.add_argument('--ntrials', type = int, default = 32, help = 'Number of Mon
 parser.add_argument('--scalefactor', type = float,  default = 0.99, help = 'Scale factor for GLSDC Guess')
 parser.add_argument('--tol', type = float, default = 1E-5, help = 'Error Tolerance for GLSDC')
 parser.add_argument('--scalewitht', type = float, default = 0, help = 'How much is weight matrix affected by tk. Set to 0 for no affect.')
+parser.add_argument('--setbaseseed', type = bool, default = False, help = 'Toggles setting a seed for repeatable results')
+parser.add_argument('--baseseed', type = int, default = 2025, help = 'Base seed for RNG functions')
 
 args = parser.parse_args()
 
@@ -36,6 +38,12 @@ maxiter         = args.maxiter # Max iteration count for GLSDC
 scale_factor    = args.scalefactor # Scale factor for GLSDC Guess
 tol             = args.tol # Error Tolerance for GLSDC
 scale_with_t    = args.scalewitht
+setseed         = args.setbaseseed
+
+if setseed:
+    baseseed = args.baseseed
+else:
+    basesee = np.random.randint(low = 0, high = 100000)
 
 # Delimeter strings for prinmt statements
 delim_equals    = '='*90
