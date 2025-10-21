@@ -61,9 +61,7 @@ System Dynamics
 def dynamics_autonomous(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     """
     Autonomous System Dynamics Including Variational Matrices
-    Augmented state: [x, xdot, theta, vec(Phi), vec(Psi)]
-    where theta = p5*t + p6
-    
+    Augmented state: [x, xdot, theta, vec(Phi), vec(Psi)], theta = p5*t + p6
     Uses Numba Just-In-Time machine code compilation and caching to speed up function calls
     
     Args:
@@ -85,14 +83,11 @@ def dynamics_autonomous(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     
     # df/dp (3x6) - partial derivatives of dynamics w.r.t. parameters
     dfdp = np.zeros((3, 6))
-    dfdp[1, 0] = -x[1]                      # d(xddot)/dp1
-    dfdp[1, 1] = -x[0]                      # d(xddot)/dp2
-    dfdp[1, 2] = -x[0]**3                   # d(xddot)/dp3
-    dfdp[1, 3] = -sin(theta)                # d(xddot)/dp4
-    dfdp[1, 4] = 0.0                        # d(xddot)/dp5
-    dfdp[1, 5] = 0.0                        # d(xddot)/dp6
-    dfdp[2, 4] = 1.0                        # d(thetadot)/dp5
-    dfdp[2, 5] = 0.0                        # d(thetadot)/dp6
+    dfdp[1, 0] = -x[1]
+    dfdp[1, 1] = -x[0]
+    dfdp[1, 2] = -x[0]**3  
+    dfdp[1, 3] = -sin(theta)
+    dfdp[2, 4] = 1
     
     # State derivatives
     xdot = np.empty(3)
@@ -100,47 +95,35 @@ def dynamics_autonomous(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     xdot[1] = -(p1 * x[1] + p2 * x[0] + p3 * x[0]**3 + p4 * sin(theta))
     xdot[2] = p5  # theta_dot = p5
     
-    # Phi (3x3) - state transition matrix
-    # Phidot = A @ Phi, where A = df/dx
+    # Phi (3x3)
+    # Phidot = df/dx @ Phi
     # A = [
     #     [0,                1,              0            ]
     #     [-p2 - 3*p3*x^2,  -p1,            -p4*cos(theta)]
     #     [0,                0,              0            ]
     # ]
     phi = y[3:12].reshape((3, 3))
-    phidot = np.empty((3, 3))
+    phidot = np.zeros((3, 3))
     
-    # First row: d(xdot)/dx
-    phidot[0, 0] = phi[1, 0]
-    phidot[0, 1] = phi[1, 1]
-    phidot[0, 2] = phi[1, 2]
+    # First row
+    phidot[0, :] = phi[1, :]
     
-    # Second row: d(xddot)/dx
-    a21 = -(p2 + 3.0 * p3 * x[0]**2)
-    a22 = -p1
-    a23 = -p4 * cos(theta)
-    phidot[1, 0] = a21 * phi[0, 0] + a22 * phi[1, 0] + a23 * phi[2, 0]
-    phidot[1, 1] = a21 * phi[0, 1] + a22 * phi[1, 1] + a23 * phi[2, 1]
-    phidot[1, 2] = a21 * phi[0, 2] + a22 * phi[1, 2] + a23 * phi[2, 2]
+    # Second row
+    phidot[1, :] = -(p2 + 3.0 * p3 * x[0]**2) * phi[0, :] - p1 * phi[1, :] + - p4 * cos(theta) * phi[2, :]
     
-    # Third row: d(thetadot)/dx = [0, 0, 0]
-    phidot[2, 0] = 0.0
-    phidot[2, 1] = 0.0
-    phidot[2, 2] = 0.0
-    
-    # Psi (3x6) - parameter sensitivity matrix
+    # Psi (3x6)
     # Psidot = A @ Psi + df/dp
     psi = y[12:30].reshape((3, 6))
     psidot = np.empty((3, 6))
     
     for j in range(6):
-        # First row: d(xdot)/dx * Psi + d(xdot)/dp
+        # First row
         psidot[0, j] = psi[1, j] + dfdp[0, j]
         
-        # Second row: d(xddot)/dx * Psi + d(xddot)/dp
-        psidot[1, j] = a21 * psi[0, j] + a22 * psi[1, j] + a23 * psi[2, j] + dfdp[1, j]
+        # Second row
+        psidot[1, j] = -(p2 + 3.0 * p3 * x[0]**2) * psi[0, j] - p1 * psi[1, j] + - p4 * cos(theta) * psi[2, j] + dfdp[1, j]
         
-        # Third row: d(thetadot)/dx * Psi + d(thetadot)/dp
+        # Third row
         psidot[2, j] = dfdp[2, j]
     
     # Concatenate results
@@ -151,135 +134,11 @@ def dynamics_autonomous(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     
     return statedot
 
-
-def validate_variational_matrices_autonomous(dynamics, x0, p, tspan, delta=1e-6):
-    """
-    Validate Phi and Psi matrices using finite differences for AUTONOMOUS system
-    
-    For the augmented autonomous system with theta as a state variable
-    State vector: [x, xdot, theta, vec(Phi_3x3), vec(Psi_3x6)]
-    
-    Args:
-        dynamics: The autonomous dynamics function
-        x0: Initial state [x(0), xdot(0)]
-        p: Parameter vector [p1, p2, p3, p4, p5, p6]
-        tspan: Time span for integration
-        delta: Finite difference step size
-    
-    Returns:
-        Dictionary with validation results at multiple time points
-    """
-    print("\nValidating Variational Matrices using Finite Differences (Autonomous)")
-    print(delim_dash)
-    
-    # Times to check
-    test_times = [10, 50, 100, 150, 200, 250, 300]
-    
-    # Augmented initial condition: [x(0), xdot(0), theta(0)]
-    theta0 = p[5]  # theta(0) = p6
-    x0_aug = np.array([x0[0], x0[1], theta0])
-    
-    # Initial conditions for Phi and Psi
-    phi0 = np.eye(3)
-    psi0 = np.zeros((3, 6))
-    
-    # Reference trajectory with Phi and Psi
-    state0 = np.concatenate([x0_aug, phi0.flatten(), psi0.flatten()])
-    sol_ref = solve_ivp(dynamics, tspan, state0, t_eval=test_times, 
-                        args=(p,), rtol=1e-10, atol=1e-10)
-    
-    validation_results = {}
-    max_phi_error = 0
-    max_psi_error = 0
-    
-    for idx, t in enumerate(test_times):
-        print(f"\n  t = {t:3d}s:", end=" ")
-        
-        # Extract Phi and Psi from solution
-        phi_analytic = sol_ref.y[3:12, idx].reshape(3, 3)
-        psi_analytic = sol_ref.y[12:30, idx].reshape(3, 6)
-        
-        # ==========================================
-        # Validate Phi using finite differences
-        # ==========================================
-        # Phi(t,t0) = ∂x_aug(t)/∂x_aug(t0) where x_aug = [x, xdot, theta]
-        phi_fd = np.zeros((3, 3))
-        
-        for i in range(3):
-            # Perturb initial augmented state
-            x0_aug_pert = x0_aug.copy()
-            x0_aug_pert[i] += delta
-            
-            # Integrate perturbed trajectory
-            state0_pert = np.concatenate([x0_aug_pert, phi0.flatten(), psi0.flatten()])
-            sol_pert = solve_ivp(dynamics, [0, t], state0_pert, 
-                                t_eval=[t], args=(p,), rtol=1e-10, atol=1e-10)
-            
-            # Finite difference approximation
-            x_pert = sol_pert.y[0:3, 0]  # Augmented state at time t with perturbed IC
-            x_ref = sol_ref.y[0:3, idx]  # Reference augmented state at time t
-            phi_fd[:, i] = (x_pert - x_ref) / delta
-        
-        # Compute relative error for Phi
-        phi_error = np.linalg.norm(phi_analytic - phi_fd) / np.linalg.norm(phi_fd)
-        max_phi_error = max(max_phi_error, phi_error)
-        
-        # ==========================================
-        # Validate Psi using finite differences
-        # ==========================================
-        # Psi(t,t0) = ∂x_aug(t)/∂p
-        psi_fd = np.zeros((3, 6))
-        
-        for j in range(6):
-            # Perturb parameter
-            p_pert = p.copy()
-            p_pert[j] += delta
-            
-            # If perturbing p6, need to update theta(0) as well
-            if j == 5:
-                x0_aug_pert = x0_aug.copy()
-                x0_aug_pert[2] += delta  # theta(0) = p6
-            else:
-                x0_aug_pert = x0_aug.copy()
-            
-            # Integrate with perturbed parameter
-            state0_pert = np.concatenate([x0_aug_pert, phi0.flatten(), psi0.flatten()])
-            sol_pert = solve_ivp(dynamics, [0, t], state0_pert, 
-                                t_eval=[t], args=(p_pert,), rtol=1e-10, atol=1e-10)
-            
-            # Finite difference approximation
-            x_pert = sol_pert.y[0:3, 0]
-            x_ref = sol_ref.y[0:3, idx]
-            psi_fd[:, j] = (x_pert - x_ref) / delta
-        
-        # Compute relative error for Psi
-        psi_error = np.linalg.norm(psi_analytic - psi_fd) / np.linalg.norm(psi_fd)
-        max_psi_error = max(max_psi_error, psi_error)
-        
-        print(f"Φ error: {phi_error:.2e}, Ψ error: {psi_error:.2e}")
-        
-        # Store detailed results
-        validation_results[t] = {
-            'phi_analytic': phi_analytic,
-            'phi_fd': phi_fd,
-            'phi_error': phi_error,
-            'phi_max_element_error': np.max(np.abs(phi_analytic - phi_fd)),
-            'psi_analytic': psi_analytic,
-            'psi_fd': psi_fd,
-            'psi_error': psi_error,
-            'psi_max_element_error': np.max(np.abs(psi_analytic - psi_fd))
-        }
-    
-    print("\n" + delim_dash)
-    print(f"Maximum Φ relative error: {max_phi_error:.2e}")
-    print(f"Maximum Ψ relative error: {max_psi_error:.2e}")
-    
-    if max_phi_error < 1e-4 and max_psi_error < 1e-4:
-        print("✓ Validation PASSED: Errors < 1e-4 indicate excellent agreement.\n")
-    else:
-        print("✗ Validation WARNING: Errors larger than expected. Check implementation.\n")
-    
-    return validation_results
+'''
+********************************************************************
+Implementing GLSDC from Tapley, Shultz, and Born 2004
+********************************************************************
+'''
 
 GLSDC_SOL = namedtuple('GLSDC_SOL', ['z', 'traj', 'Lambda'])
 def glsdc_autonomous(dynamics, 
@@ -312,8 +171,9 @@ def glsdc_autonomous(dynamics,
     """
     
     # Initializing / declaring relevant values
-    phi0    = np.eye(3)  # 3x3 for autonomous system
+    phi0    = np.eye(3)
     psi0    = np.zeros((3, 6))
+    psi0[2, 5] = 1
     
     old_cost = np.inf   # old_cost is the cost of the most recently run iteration
     new_cost = 1        # new_cost is the cost of the current iteration
@@ -324,9 +184,6 @@ def glsdc_autonomous(dynamics,
     # Weight Matrix
     W_diag      = 1.0 / ((1 + scale_with_t * teval_arr) * sigma**2)  # Diagonal weight matrix elements
     
-    # H matrix selector: we measure x (first component of augmented state)
-    dgdx = np.array([[1.0, 0.0, 0.0]])  # [∂g/∂x, ∂g/∂xdot, ∂g/∂theta]
-    
     if verbose:
         print(f'\n{"Iter":>5} {"x(0)":>8} {"xdot(0)":>8} {"p1":>8} {"p2":>8} '
               f'{"p3":>8} {"p4":>8} {"p5":>8} {"p6":>8} {"Cost":>12}')
@@ -335,12 +192,10 @@ def glsdc_autonomous(dynamics,
     for i in range(maxiter):
         
         # Initialize for iteration
-        # Extracting x0, xdot0 and p estimates from z variable
+        # Extracting x0 and p estimates from z variable
         x0_guess    = z[0]
         xdot0_guess = z[1]
         p_guess     = z[2:]
-        
-        # For autonomous system, theta(0) = p6
         theta0_guess = p_guess[5]
         x_aug_0 = np.array([x0_guess, xdot0_guess, theta0_guess])
         
@@ -377,8 +232,8 @@ def glsdc_autonomous(dynamics,
         new_cost = np.sum(W_diag * err**2)
         
         # Extracting Phi and Psi data from solution
-        phi_data = glsdc_guess_traj.y[3:12, :].T # dim = len(teval) x 9 (3x3 flattened)
-        psi_data = glsdc_guess_traj.y[12:30, :].T # dim = len(teval) x 18 (3x6 flattened)
+        phi_data = glsdc_guess_traj.y[3:12, :].T # dim = len(teval) x 9
+        psi_data = glsdc_guess_traj.y[12:30, :].T # dim = len(teval) x 18
         
         for k in range(len(teval)):
             
@@ -386,36 +241,11 @@ def glsdc_autonomous(dynamics,
             phi_k = phi_data[k].reshape(3, 3) # Is now (3x3)
             psi_k = psi_data[k].reshape(3, 6) # Is now (3x6)
             
-            # For autonomous system with augmented state [x, xdot, theta]:
-            # We need ∂x(t)/∂z where z = [x(0), xdot(0), p]^T
-            # 
-            # Note: theta(0) = p6, so ∂theta(0)/∂p6 = 1
-            # Thus we need to account for this dependency
-            
-            # Phi gives us ∂[x, xdot, theta](t)/∂[x(0), xdot(0), theta(0)]
-            # Psi gives us ∂[x, xdot, theta](t)/∂[p1, p2, p3, p4, p5, p6]
-            
-            # We want ∂x(t)/∂[x(0), xdot(0), p1, p2, p3, p4, p5, p6]
-            # 
-            # ∂x(t)/∂x(0) = Phi[0, 0]
-            # ∂x(t)/∂xdot(0) = Phi[0, 1]
-            # ∂x(t)/∂p_j = Psi[0, j] + Phi[0, 2] * ∂theta(0)/∂p_j
-            #
-            # where ∂theta(0)/∂p6 = 1 and ∂theta(0)/∂p_j = 0 for j ≠ 6
-            
-            # H_i = dg_i / dz = [∂x/∂x(0), ∂x/∂xdot(0), ∂x/∂p1, ..., ∂x/∂p6]
+            # H_i
             H_i = np.zeros((1, 8))
-            
-            # Derivatives w.r.t. initial states
-            H_i[0, 0] = phi_k[0, 0]  # ∂x(t)/∂x(0)
-            H_i[0, 1] = phi_k[0, 1]  # ∂x(t)/∂xdot(0)
-            
-            # Derivatives w.r.t. parameters
-            for j in range(6):
-                if j == 5:  # p6 affects theta(0) directly
-                    H_i[0, 2 + j] = psi_k[0, j] + phi_k[0, 2]
-                else:
-                    H_i[0, 2 + j] = psi_k[0, j]
+            H_i[0, :2] = phi_k[0, :2]
+            H_i[0, 2:8] = psi_k[0, :6]
+            H_i[0, 7] += phi_k[0, 2]
             
             # Accumulate normal equations
             Lambda += (H_i.T * W_diag[k]) @ H_i  # (8, 8)
@@ -425,7 +255,7 @@ def glsdc_autonomous(dynamics,
             print(f'{i:5d} {z[0]:8.4f} {z[1]:8.4f} {z[2]:8.4f} {z[3]:8.4f} ' +
                   f'{z[4]:8.4f} {z[5]:8.4f} {z[6]:8.4f} {z[7]:8.4f} {new_cost:12.6e}')
         
-        # Solve for update step (use solve instead of inv for numerical stability)
+        # Solve for update step (using solve instead of inv for numerical stability)
         delta_z = np.linalg.solve(Lambda, N)
         
         # Check convergence
@@ -731,6 +561,7 @@ if __name__ == '__main__':
     
     phi0 = np.eye(3)        # 3x3 for autonomous system
     psi0 = np.zeros((3, 6))
+    psi0[2, 4] = 1
     state0 = np.concatenate([x0_aug, phi0.flatten(), psi0.flatten()])
 
     print(delim_equals + '\nTask 1: Simulating Motion, Measurements, and Validating Matrices\n' + delim_equals)
@@ -746,8 +577,6 @@ if __name__ == '__main__':
     print('\nValidating Variational Matrices ...\n' + delim_dash)
     
     # Validate variational matrices for autonomous system
-    print('\nValidating Variational Matrices ...')
-    validation_results = validate_variational_matrices_autonomous(dynamics_autonomous, x0, p, tspan)
 
     """
     ********************************************************************

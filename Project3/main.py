@@ -56,6 +56,7 @@ teval           = [i/10 for i in range(1, 3001)] # Times at which system is samp
 System Dynamics
 ********************************************************************
 '''
+
 @njit(cache=True)
 def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     """
@@ -94,9 +95,9 @@ def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     xdot[1] = -(p1 * x[1] + p2 * x[0] + p3 * x[0]**3 + p4 * sin(theta))
     
     # Phi (2x2)
-    # Phidot = A @ Phi
+    # Phidot = df/dx @ Phi
     # A = [
-    #     [0, 1]
+    #     [0,               1]
     #     [-p2 - 3p3x**2, -p1]
     # ]
     phi             = y[2:6].reshape((2, 2))
@@ -107,14 +108,10 @@ def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     phidot[1, 1]    = -(p2 + 3.0 * p3 * x[0]**2) * phi[0, 1] - p1 * phi[1, 1]
     
     # Psi (2x6)
-    # Psidot = A @ Psi + df/dp
-    # A = [
-    #     [0, 1]
-    #     [-p2 - 3p3x**2, -p1]
-    # ]
+    # Psidot = df/dx @ Psi + df/dp
     # df/dp = [
-    #     [Zeros]
-    #     [-xdot, -x, -x**3, -sin(theta), -p4*t*cos(theta), -p4cos(theta)]
+    #     [0        0       0       0           0                   0      ]
+    #     [-xdot, -x,   -x**3, -sin(theta), -p4*t*cos(theta), -p4cos(theta)]
     # ]
     psi = y[6:18].reshape((2, 6))
     psidot = np.empty((2, 6))
@@ -129,7 +126,6 @@ def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     statedot[6:18]    = psidot.ravel()
     
     return statedot
-    
 
 '''
 ********************************************************************
@@ -227,7 +223,6 @@ def glsdc(dynamics,
         err = ytilde - glsdc_guess_traj.y[0, :]  # Shape: (n_measurements,)
         
         # The performance index is given as J = err^T @ W @ err
-        # The matrix multiplication is converted to elementwise multiplication and summation
         new_cost = np.sum(W_diag * err**2)
         
         # Extracting Phi and Psi data from solution
