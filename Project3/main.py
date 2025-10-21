@@ -68,7 +68,7 @@ System Dynamics
 @njit(cache=True)
 def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     """
-    System Dynamics Including Variational Matrices
+    Returns the system dynamics assuming a nonautonomous system formulation.
     Uses Numba Just-In-Time machine code compilation and caching to speed up function calls
     
     Args:
@@ -84,11 +84,9 @@ def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     
     # Extract parameters
     p1, p2, p3, p4, p5, p6 = p
-    
-    # Computing a often repeated value
     theta = p5 * t + p6
     
-    # df/dp (2x6)
+    # df/dp
     dfdp        = np.zeros((2, 6))
     dfdp[1, 0]  = -x[1]
     dfdp[1, 1]  = -x[0]
