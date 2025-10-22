@@ -127,6 +127,73 @@ def dynamics(t: float, y: np.ndarray, p: np.ndarray) -> np.ndarray:
     
     return statedot
 
+def validate_stm(dynamics, x0: np.ndarray, p: np.ndarray, tspan: list) -> None:
+    """
+    Validate State Transition Matrix by comparing true vs linearly predicted trajectories of perturbed system
+    
+    Args:
+        dynamics (function): The autonomous dynamics function
+        x0 (np.ndarray): Initial state [x(0), xdot(0)]
+        p (np.ndarray): Parameter vector [p1, p2, p3, p4, p5, p6]
+        tspan (np.ndarray): Time span for integration
+    
+    Returns:
+        None
+    """
+    print(delim_dash + "\nValidating State Transition Matrix\n" + delim_dash)
+    
+    # Times to check
+    test_times = np.linspace(0, tspan[1], 31)
+    
+    theta0 = p[5] 
+    x0_aug = np.array([x0[0], x0[1], theta0])
+    
+    # Initial conditions for Phi and Psi
+    phi0 = np.eye(3)
+    psi0 = np.zeros((3, 6))
+    psi0[2, 5] = 1
+    
+    # Integrate nominal trajectory with STM
+    print("Integrating nominal trajectory...")
+    state0_nom = np.concatenate([x0_aug, phi0.flatten(), psi0.flatten()])
+    xN = solve_ivp(dynamics, tspan, state0_nom, t_eval=test_times, args=(p,), rtol=1e-10, atol=1e-10)
+    
+    # Perturbed initial condition
+    deltax0 = np.array([0.001, 0.001, 0.0])
+    x0_pert = x0_aug + deltax0
+    
+    # Integrate perturbed trajectory
+    print("Integrating perturbed trajectory...")
+    state0_pert = np.concatenate([x0_pert, phi0.flatten(), psi0.flatten()])
+    sol_pert = solve_ivp(dynamics, tspan, state0_pert, t_eval=test_times, args=(p,), rtol=1e-10, atol=1e-10)
+    
+    # Extract actual perturbed states
+    x = sol_pert.y[0:3, :]
+    
+    # Predict perturbed trajectory using STM and linear methods
+    print("Predicting perturbed trajectory using STM...")
+    x_LP = np.zeros((3, len(test_times)))
+    
+    for k, t in enumerate(test_times):
+        # Get nominal state and STM at time t
+        x_nom_t = xN.y[0:3, k]
+        phi_t = xN.y[3:12, k].reshape(3, 3)
+        
+        # Predict: x_LP(t) = xN(t) + Phi(t) @ deltax0
+        x_LP[:, k] = x_nom_t + phi_t @ deltax0
+    
+    # Computing error statistics
+    error = x - x_LP
+    error_mag = np.linalg.norm(error, axis=0)
+    max_error = np.max(error_mag)
+    mean_error = np.mean(error_mag)
+    final_error = error_mag[-1]
+    
+    print(f"\nResults:")
+    print(f"Maximum error:     {max_error:.6e}")
+    print(f"Mean error:        {mean_error:.6e}")
+    print(f"Final time error:  {final_error:.6e}")
+
 '''
 ********************************************************************
 Implementing GLSDC from Tapley, Shultz, and Born 2004
@@ -577,6 +644,9 @@ def main():
     
     # TODO: Validating State Transition Matrix
     print('\nValidating Variational Matrices ...\n' + delim_dash)
+    
+    # Validate STM by comparing actual vs predicted perturbed trajectories
+    stm_validation = validate_stm(dynamics, x0, p, tspan)
 
     """
     ********************************************************************
