@@ -149,38 +149,30 @@ def validate_stm(dynamics, x0: np.ndarray, p: np.ndarray, tspan: list) -> None:
     x0_aug = np.array([x0[0], x0[1], theta0])
     
     # Initial conditions for Phi and Psi
-    phi0 = np.eye(3)
-    psi0 = np.zeros((3, 6))
-    psi0[2, 5] = 1
+    phi0        = np.eye(3)
+    psi0        = np.zeros((3, 6))
+    psi0[2, 5]  = 1
     
-    # Integrate nominal trajectory with STM
+    # Integrate nominal trajectory
     print("Integrating nominal trajectory ...")
-    state0_nom = np.concatenate([x0_aug, phi0.flatten(), psi0.flatten()])
-    xN = solve_ivp(dynamics, tspan, state0_nom, t_eval=test_times, args=(p,), rtol=1e-10, atol=1e-10)
+    state0_nom  = np.concatenate([x0_aug, phi0.flatten(), psi0.flatten()])
+    xN          = solve_ivp(dynamics, tspan, state0_nom, t_eval = test_times, args = (p,), rtol = 1e-10, atol = 1e-10)
     
-    # Perturbed initial condition
-    deltax0 = np.array([0.001, 0.001, 0.0])
-    x0_pert = x0_aug + deltax0
-    
-    # Integrate perturbed trajectory
+    # Perturb initial state and integrate trajectory
     print("Integrating perturbed trajectory ...")
-    state0_pert = np.concatenate([x0_pert, phi0.flatten(), psi0.flatten()])
-    sol_pert = solve_ivp(dynamics, tspan, state0_pert, t_eval=test_times, args=(p,), rtol=1e-10, atol=1e-10)
-    
-    # Extract actual perturbed states
-    x = sol_pert.y[0:3, :]
+    deltax0     = np.array([0.001, 0.001, 0.0])
+    state0_pert = np.concatenate([x0_aug + deltax0, phi0.flatten(), psi0.flatten()])
+    x           = solve_ivp(dynamics, tspan, state0_pert, t_eval = test_times, args = (p,), rtol = 1e-10, atol = 1e-10).y[0:3, :]
     
     # Predict perturbed trajectory using STM and linear methods
     print("Predicting perturbed trajectory using STM ...")
-    x_LP = np.zeros((3, len(test_times)))
     
-    for k, t in enumerate(test_times):
+    x_LP = np.zeros((3, len(test_times)))
+    for k in range(len(test_times)):
         # Get nominal state and STM at time t
-        x_nom_t = xN.y[0:3, k]
-        phi_t = xN.y[3:12, k].reshape(3, 3)
-        
-        # Predict: x_LP(t) = xN(t) + Phi(t) @ deltax0
-        x_LP[:, k] = x_nom_t + phi_t @ deltax0
+        xNt         = xN.y[0:3, k]
+        phi_t       = xN.y[3:12, k].reshape(3, 3)
+        x_LP[:, k]  = xNt + phi_t @ deltax0
     
     # Computing error statistics
     err = x - x_LP
@@ -375,7 +367,7 @@ def propagate_cov(z: np.ndarray, glsdc_traj, Lambda: np.ndarray):
         Lambda: Information matrix from GLSDC
     
     Returns:
-        Tuple(xt, Pt): The state [x, xdot] and covariance at t=0, 100, 200, 300
+        Tuple(xt, Pt): The state [x, xdot] and covariance P(t) at t=0, 100, 200, 300
     """
     # Times at which system is sampled
     sample_times = [100, 200, 300]
@@ -642,11 +634,8 @@ def main():
     simulated_motion = solve_ivp(dynamics, tspan, state0, args=(p,), rtol=1E-10, atol=1E-10)
     measured_states = solve_ivp(dynamics, tspan, state0, t_eval=teval, args=(p,), rtol=1E-10, atol=1E-10)
     
-    # TODO: Validating State Transition Matrix
-    print('\nValidating Variational Matrices ...\n' + delim_dash)
-    
     # Validate STM by comparing actual vs predicted perturbed trajectories
-    stm_validation = validate_stm(dynamics, x0, p, tspan)
+    validate_stm(dynamics, x0, p, tspan)
 
     """
     ********************************************************************
