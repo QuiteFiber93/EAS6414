@@ -692,6 +692,8 @@ def main():
     task1       = make_sol_plots(simulated_motion, measured_states, ytilde, True)
     cov_plot    = plot_cov_ellipse(sample_cov, Pt[:, :2, :2], sample_states, xt, true_states, saveplot=True)
     plt.show()
+    
+    print(delim_equals + '\nProject Complete!\n' + delim_equals)
 
 if __name__ == '__main__':
     main()

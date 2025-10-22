@@ -21,14 +21,14 @@ Dylan D'Silva
 # This makes it so that key values can be changed as arguments from the command line
 parser = argparse.ArgumentParser(description='Runs Monte Carlo Methods for GLSDC Algorithm')
 
-parser.add_argument('--sigma', type = float, default = 0.1, help='Standard Deviation of x(t) measurements')
-parser.add_argument('--maxiter', type = int, default = 30, help = 'Maximum Number of iterations for GLSDC Algorithm')
-parser.add_argument('--ntrials', type = int, default = 32, help = 'Number of Monte Carlo Trials')
-parser.add_argument('--scalefactor', type = float,  default = 0.99, help = 'Scale factor for GLSDC Guess')
-parser.add_argument('--tol', type = float, default = 1E-3, help = 'Error Tolerance for GLSDC')
-parser.add_argument('--scalewitht', type = float, default = 0, help = 'How much is weight matrix affected by tk. Set to 0 for no affect.')
-parser.add_argument('--dosetseed', type = bool, default = False, help = 'Toggles setting a seed for repeatable results')
-parser.add_argument('--baseseed', type = int, default = 2025, help = 'Base seed for RNG functions')
+parser.add_argument('--sigma',          type = float,           default = 0.1,  help='Standard Deviation of x(t) measurements')
+parser.add_argument('--maxiter',        type = int,             default = 30,   help = 'Maximum Number of iterations for GLSDC Algorithm')
+parser.add_argument('--ntrials',        type = int,             default = 32,   help = 'Number of Monte Carlo Trials')
+parser.add_argument('--scalefactor',    type = float,           default = 0.99, help = 'Scale factor for GLSDC Guess')
+parser.add_argument('--tol',            type = float,           default = 1E-3, help = 'Error Tolerance for GLSDC')
+parser.add_argument('--scalewitht',     type = float,           default = 0,    help = 'How much is weight matrix affected by tk. Set to 0 for no affect.')
+parser.add_argument('--dosetseed',      action = 'store_true',  help = 'Toggles setting a seed for repeatable results')
+parser.add_argument('--baseseed',       type = int,             default = 2025, help = 'Base seed for RNG functions')
 
 args = parser.parse_args()
 
