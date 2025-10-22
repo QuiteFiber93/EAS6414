@@ -22,9 +22,9 @@ parser.add_argument('--sigma',      type = float,   default = 0.1,  help ='Stand
 parser.add_argument('--maxiter',    type = int,     default = 30,   help = 'Maximum Number of iterations for GLSDC Algorithm')
 parser.add_argument('--ntrials',    type = int,     default = 1000, help = 'Number of Monte Carlo Trials')
 parser.add_argument('--scalefactor',type = float,   default = 0.9,  help = 'Scale factor for GLSDC Guess')
-parser.add_argument('--tol',        type = float,   default = 1E-5, help = 'Error Tolerance for GLSDC')
+parser.add_argument('--tol',        type = float,   default = 1E-3, help = 'Error Tolerance for GLSDC')
 parser.add_argument('--decaywitht', type = float,   default = 0,    help = 'How much is weight matrix affected by tk. Set to 0 for no effect.')
-parser.add_argument('--dosetseed',  type = bool,    default = False,help = 'Toggles setting a seed for repeatable results')
+parser.add_argument('--dosetseed',  action = 'store_true',         help = 'Toggles setting a seed for repeatable results')
 parser.add_argument('--baseseed',   type = int,     default = 2025, help = 'Base seed for RNG functions')
 
 args = parser.parse_args()
@@ -36,10 +36,12 @@ scale_factor    = args.scalefactor # Scale factor for GLSDC Guess
 tol             = args.tol # Error Tolerance for GLSDC
 decay_with_t    = args.decaywitht # Weight matrix decay with t
 setseed         = args.dosetseed # RNG seed
+
 if setseed:
     baseseed = args.baseseed
 else:
-    basesee = np.random.randint(low = 0, high = 100000)
+    baseseed = np.random.randint(low = 0, high = 100000)
+    print(f'Seed not set. Using seed = {baseseed}.')
 
 # Delimeter strings for print statements
 delim_equals    = '='*90
@@ -138,7 +140,7 @@ def glsdc(dynamics,
           teval: list = teval,
           tspan: list = tspan,
           sigma: float = sigma,
-          tol: float = 1e-3,
+          tol: float = tol,
           maxiter: int = 30,
           dense: bool = False
           ):
@@ -180,8 +182,7 @@ def glsdc(dynamics,
     
     if dense:
         print(f'\n{"Iter":>5} {"x(0)":>8} {"xdot(0)":>8} {"p1":>8} {"p2":>8} '
-              f'{"p3":>8} {"p4":>8} {"p5":>8} {"p6":>8} {"Cost":>12}')
-        print('-' * 80)
+              f'{"p3":>8} {"p4":>8} {"p5":>8} {"p6":>8} {"Cost":>12}\n' + delim_dash)
     
     for i in range(maxiter):
         
@@ -216,8 +217,8 @@ def glsdc(dynamics,
         
         # Checking to see if the solve_ivp function actually integrated the entire interval
         if glsdc_guess_traj.status == -1:
-            print(f"Integration failed: {glsdc_guess_traj.message}")
-            return z, glsdc_guess_traj, Lambda
+            print('\nGLSDC Solution is diverging, returning none. This iteration will should not be included in analysis.\n')
+            return None
         
         # Calculating measurement error
         err = ytilde - glsdc_guess_traj.y[0, :]  # Shape: (n_measurements,)
@@ -253,7 +254,7 @@ def glsdc(dynamics,
         delta_z = np.linalg.solve(Lambda, N)
         
         # Check convergence
-        if abs(new_cost - old_cost) / old_cost <= tol or np.linalg.norm(delta_z) <= tol*1E-2: break
+        if abs(new_cost - old_cost) / old_cost <= tol or np.linalg.norm(delta_z) <= tol * 1E-2: break
         
         # Update state using calculated step
         z += delta_z
@@ -262,11 +263,12 @@ def glsdc(dynamics,
         z[-1] = z[-1] % (2 * pi)
     
     if dense:
-        print('-' * 80)
+        print(delim_dash)
     
     # Again, checking convergence of solution
     if abs(new_cost - old_cost) / old_cost > tol and np.linalg.norm(delta_z) > tol:
         print(f'\nGLSDC failed to converge (tol={tol}) in {maxiter} iterations')
+        print(f'Final z value: {np.array2string(z)}')
     
     return GLSDC_SOL(z, glsdc_guess_traj, Lambda)
 
@@ -397,12 +399,13 @@ def monte_carlo_sim(dynamics, z_true, measured_states, niter=1000, n_jobs=-1):
     
     # Perform Monte Carlo Parallelization
     trial_results = Parallel(n_jobs = n_jobs)(delayed(single_glsdc_run)(baseseed + n) for n in progress_bar)
+    successful_iterations = [trial_result for trial_result in trial_results if trial_result is not None]
     
     # Parsing results
-    x_at_0   = np.array([trial.t0 for trial in trial_results])
-    x_at_100 = np.array([trial.t100 for trial in trial_results])
-    x_at_200 = np.array([trial.t200 for trial in trial_results])
-    x_at_300 = np.array([trial.t300 for trial in trial_results])
+    x_at_0   = np.array([trial.t0 for trial in successful_iterations])
+    x_at_100 = np.array([trial.t100 for trial in successful_iterations])
+    x_at_200 = np.array([trial.t200 for trial in successful_iterations])
+    x_at_300 = np.array([trial.t300 for trial in successful_iterations])
     
     # Calculate Sample Statistics
     monte_carlo_stats = {
@@ -534,7 +537,6 @@ def plot_cov_ellipse(sample_cov: np.ndarray, projected_cov: np.ndarray, sample_s
             axs[n, i].set_ylabel(r'$\dot{x}(t)$')
             axs[n, i].set_title(r'$t$' f' = {times[k]}')
             axs[n, i].legend()
-            # axs[n, i].axis('equal')
             axs[n, i].grid()
             
     if saveplot:
@@ -547,7 +549,7 @@ def main():
     print('\nGiven Values\n' + delim_dash)
     print(f'x0                              = {np.array2string(x0)}')
     print(f'p                               = {np.array2string(p)}')
-    print(f'Measurement Covariance          = {sigma}^2')
+    print(f'Measurement Covariance          = ({sigma})^2')
     print(f'Maximum Iteration for GLSDC     = {maxiter}')
     print(f'Scale factor for initial guess  = {scale_factor}\n')
     
