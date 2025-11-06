@@ -24,7 +24,7 @@ parser.add_argument('--ntrials',    type = int,     default = 1000, help = 'Numb
 parser.add_argument('--scalefactor',type = float,   default = 0.9,  help = 'Scale factor for GLSDC Guess')
 parser.add_argument('--tol',        type = float,   default = 1E-3, help = 'Error Tolerance for GLSDC')
 parser.add_argument('--decaywitht', type = float,   default = 0,    help = 'How much is weight matrix affected by tk. Set to 0 for no effect.')
-parser.add_argument('--dosetseed',  action = 'store_true',         help = 'Toggles setting a seed for repeatable results')
+parser.add_argument('--dosetseed',  action = 'store_true',          help = 'Toggles setting a seed for repeatable results')
 parser.add_argument('--baseseed',   type = int,     default = 2025, help = 'Base seed for RNG functions')
 
 args = parser.parse_args()
