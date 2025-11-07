@@ -96,7 +96,7 @@ end
 % Function adds multi-variate gaussian noise 
 function noisy_measurements = generate_measurements(h_cords, R, n)
     noise = randn(n, 3) * sqrt((R));
-    noisy_measurements = h_cords + mvnrnd([0, 0, 0], R, n);
+    noisy_measurements = h_cords + noise;
 end
 
 % Function to integrate Two Body mechanics and STM ODE
