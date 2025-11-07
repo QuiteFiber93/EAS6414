@@ -115,11 +115,19 @@ end
 
 % Function for sinlge GLSDC Iteration
 function [estimate, Lambda] = glsdc(dynamics, guess, measurements, R, tmeas, R_obsv, LST)
+
     % Initializing relevant values
     W = inv(R);
     Phi0 = zeros(6);
 
+    % Cost for iteration convergence
+    old_cost = inf;
+    new_cost = 0;
+
     for n = 1:maxiter
+
+        % Update cost from last iteration 
+        old_cost = new_cost;
 
         % Lambda and N for normal equations
         Lambda = zeros(6);
