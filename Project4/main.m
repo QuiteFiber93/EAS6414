@@ -52,7 +52,7 @@ measurements = generate_measurements(h_cords, R, length(tmeas));
 %% GLSDC
 r0hat = [6990; 1; 1];
 v0hat = [1; 1; 1];
-x0hat = [r0hat; vohat];
+x0hat = [r0hat; v0hat];
 
 maxiter = 7;
 tol = 1E-5;
@@ -95,6 +95,7 @@ end
 
 % Function adds multi-variate gaussian noise 
 function noisy_measurements = generate_measurements(h_cords, R, n)
+    noise = randn(n, 3) * sqrt((R));
     noisy_measurements = h_cords + mvnrnd([0, 0, 0], R, n);
 end
 
@@ -104,17 +105,64 @@ function ydot = two_body_STM(t, y, mu)
     v = y(4:6);
     Phi = rehshape(y(7:42));
 
-    Phidot = [zeros(3), eye(3); F21, zeros(3)];
+    % Phidot = df/dx * Phi
+    % A = df/dx = [dv/dr, dv/dv; dvdot/dr, dvdot/dv]
+    %           = [0, I; A_21, 0]
+    A = [zeros(3), eye(3); 3*mu/norm(r)^5*(r*r') - mu/norm(r)^3*eye(3), zeros(3)];
+    Phidot = A * Phi;
+    ydot = [v; -mu*r/norm(r)^3; Phidot(:)];
 end
 
 % Function for sinlge GLSDC Iteration
-function [estimate, Lambda] = glsdc(dynamics, guess, measurements, R, tmeas)
+function [estimate, Lambda] = glsdc(dynamics, guess, measurements, R, tmeas, R_obsv, LST)
     % Initializing relevant values
     W = inv(R);
     Phi0 = zeros(6);
 
     for n = 1:maxiter
+
+        % Lambda and N for normal equations
+        Lambda = zeros(6);
+        N = zeros(6, 1);
+        
+        % Initial state = [guess; Phi0(:)]
+        initial_state_guess = [guess; Phi0(:)];
+
         % Integrate dynamics and STM
+        options = odeset('RelTol',1E-8, 'AbsTol',1E-10);
+        [~, state_estimates] = ode45(dynamics, tmeas, initial_state_guess, options);
+
+        % Converting to inertial, then obsv, then horizontal coordinates to
+        % arrived at measurement estimate
+        rho = inertial_range(state_estimates(:, 1:3), R_obsv, obsv_lat, LST);
+        rho_obsv = observer_range(rho, obsv_lat, LST);
+        estimated_measurments = horizontal_coordinates(rho_obsv);
+
+        % Using estimated measurements to calculate error
+        err = measurements - estimated_measurments;
+        
+        % Going through and calculating Lambda and N
+        for k = 1:length(tmeas)
+            % Calculate H_k = dh/dx * Phi
+            % Expressions for dh/dx
+            dhdx = zeros(3, 6);
+
+            % Extracting Phi
+            Phi_k = reshape(state_estimates(k, 7:42), 6, 6);
+
+            % H_k
+            H_k = dhdx * Phi_k;
+
+        end
+        
+        % Check for convergence
+
+        % Solve for delta_x
+        delta_x = 0;
+
+        
+        % Updating guess
+        guess = guess + delta_x;
     end
 
     
