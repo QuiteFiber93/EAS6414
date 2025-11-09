@@ -336,7 +336,7 @@ end
 
 scatter(glsdc_estimate(idx(1)), glsdc_estimate(idx(2)), 'b', 'filled', 'DisplayName','GLSDC Estimate')
 scatter(monte_carlo_estimate(idx(1)), monte_carlo_estimate(idx(2)), [], 'r', 'filled')
-scatter(y0(idx(1)), y0(idx(2)), 'k', '+', 'DisplayName', 'True Initial State')
+scatter(y0(idx(1)), y0(idx(2)), 50, 'k', '+', 'DisplayName', 'True Initial State', 'LineWidth',2)
 hold off
 title('Initial Position Estimate in y-z Plane')
 xlabel('y (km)')
@@ -361,7 +361,7 @@ for scale = 1:3
 end
 scatter(glsdc_estimate(idx(1)), glsdc_estimate(idx(2)), 'b', 'filled', 'DisplayName','GLSDC Estimate')
 scatter(monte_carlo_estimate(idx(1)), monte_carlo_estimate(idx(2)), [], 'r', 'filled')
-scatter(y0(idx(1)), y0(idx(2)), 'k', '+', 'DisplayName', 'True Initial State')
+scatter(y0(idx(1)), y0(idx(2)), 50, 'k', '+', 'DisplayName', 'True Initial State', 'LineWidth',2)
 
 title('Initial Position Estimate in x-z Plane')
 xlabel('x (km)')
@@ -386,7 +386,7 @@ for scale = 1:3
 end
 scatter(glsdc_estimate(idx(1)), glsdc_estimate(idx(2)), 'b', 'filled', 'DisplayName','GLSDC Estimate')
 scatter(monte_carlo_estimate(idx(1)), monte_carlo_estimate(idx(2)), [], 'r', 'filled')
-scatter(y0(idx(1)), y0(idx(2)), 'k', '+', 'DisplayName', 'True Initial State')
+scatter(y0(idx(1)), y0(idx(2)), 50, 'k', '+', 'DisplayName', 'True Initial State', 'LineWidth',2)
 
 title('Initial Position Estimate in x-y Plane')
 xlabel('x (km)')

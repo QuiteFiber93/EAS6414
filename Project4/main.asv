@@ -162,15 +162,15 @@ exportgraphics(gcf, 'Images/alt_az_plot.png', 'Resolution',300)
 
 % Plotting Range vs Range Measurements
 figure
-title('True Range vs Range Measurements')
 plot(t, rho_true, 'DisplayName','True Range')
 hold on
-scatter(tmeas, measurements(:, 1), 5, 'DisplayName','Range Measurements')
+scatter(tmeas, measurements(:, 1), 10, 'filled', 'DisplayName','Range Measurements')
 hold off
+title('True Range vs Range Measurements')
 xlabel('t (s)')
 ylabel('Range (km)')
 legend()
-exportgraphics(gcf, 'Images/range_plot.pn')
+exportgraphics(gcf, 'Images/range_plot.png', 'Resolution',300)
 
 
 %% GLSDC
@@ -211,12 +211,12 @@ options = odeset('RelTol',1E-8, 'AbsTol',1E-10);
 
 % This figure will create a 3d plot of all 3 trajectories, the save it
 figure
-title('Trajectory Comparison')
 plot3(true_traj(:, 1), true_traj(:, 2), true_traj(:, 3), 'DisplayName', 'True')
 hold on
 plot3(glsdc_traj(:, 1), glsdc_traj(:, 2), glsdc_traj(:, 3), 'DisplayName', 'GLSDC')
 plot3(monte_carlo_traj(:, 1), monte_carlo_traj(:, 2), monte_carlo_traj(:, 3), 'DisplayName', 'Monte Carlo')
 hold off
+title('Trajectory Comparison')
 xlabel('x (km)')
 ylabel('y (km)')
 zlabel('z (km)')
@@ -227,12 +227,11 @@ exportgraphics(gcf, 'Images/trajectory_comparison.png', 'Resolution', 300)
 % This figure will create a 3d plot showing the errors in trajectory for
 % the GLSDC and Monte Carlo Estimates, then save it
 figure
-title('Estimate Trajectory Error')
 plot3(true_motion(:, 1) - glsdc_traj(:, 1), true_motion(:, 2) - glsdc_traj(:, 2), true_motion(:, 3) - glsdc_traj(:, 3), 'DisplayName', 'GLSDC')
 hold on
 plot3(true_motion(:, 1) - monte_carlo_traj(:, 1), true_motion(:, 2) - monte_carlo_traj(:, 2), true_motion(:, 3) - monte_carlo_traj(:, 3), 'DisplayName', 'Monte Carlo')
 hold off
-
+title('Estimate Trajectory Error')
 xlabel('$\Delta x$ (km)', 'Interpreter','latex')
 ylabel('$\Delta y$ (km)', 'Interpreter','latex')
 zlabel('$\Delta z$ (km)', 'Interpreter','latex')
@@ -245,33 +244,31 @@ exportgraphics(gcf, 'Images/estimate_trajectory_error.png', 'Resolution', 300)
 % It uses the tiledlayout, which is like subplot
 fig = tiledlayout(3, 1);
 nexttile;
-title('$x(t)$ Error', 'Interpreter','latex')
 hold on
 plot(t, true_motion(:, 1) - glsdc_traj(:, 1), 'DisplayName','GLSDC')
 plot(t, true_motion(:, 1) - monte_carlo_traj(:, 1), 'DisplayName','Monte Carlo')
 hold off
+title('$x(t)$ Error', 'Interpreter','latex')
 ylabel('$\Delta x$ (km)', 'Interpreter','latex')
 legend()
 grid()
 
 nexttile;
-title('$y(t)$ Error', 'Interpreter','latex')
 hold on
 plot(t, true_motion(:, 2) - glsdc_traj(:, 2), 'DisplayName','GLSDC')
 plot(t, true_motion(:, 2) - monte_carlo_traj(:, 2), 'DisplayName','Monte Carlo')
 hold off
-
+title('$y(t)$ Error', 'Interpreter','latex')
 ylabel('$\Delta y$ (km)', 'Interpreter','latex')
 legend()
 grid()
 
 nexttile;
-title('$z(t)$ Error', 'Interpreter','latex')
 hold on
 plot(t, true_motion(:, 3) - glsdc_traj(:, 3), 'DisplayName','GLSDC')
 plot(t, true_motion(:, 3) - monte_carlo_traj(:, 3), 'DisplayName','Monte Carlo')
 hold off
-
+title('$z(t)$ Error', 'Interpreter','latex')
 xlabel('t (s)')
 ylabel('$\Delta z$ (km)', 'Interpreter','latex')
 legend()
@@ -284,34 +281,31 @@ exportgraphics(gcf, 'Images/traj_estimate_pos_err.png', 'Resolution',300)
 % It uses the tiledlayout, which is like subplot
 fig = tiledlayout(3, 1);
 nexttile;
-title('$\dot{x}(t)$ Error', 'Interpreter','latex')
 hold on
+title('$\dot{x}(t)$ Error', 'Interpreter','latex')
 plot(t, true_motion(:, 4) - glsdc_traj(:, 4), 'DisplayName','GLSDC')
 plot(t, true_motion(:, 4) - monte_carlo_traj(:, 4), 'DisplayName','Monte Carlo')
 hold off
-
 ylabel('$\Delta \dot{z}$ (km)', 'Interpreter','latex')
 legend()
 grid()
 
 nexttile;
-title('$\dot{y}(t)$ Error', 'Interpreter','latex')
 hold on
 plot(t, true_motion(:, 5) - glsdc_traj(:, 5), 'DisplayName','GLSDC')
 plot(t, true_motion(:, 5) - monte_carlo_traj(:, 5), 'DisplayName','Monte Carlo')
 hold off
-
+title('$\dot{y}(t)$ Error', 'Interpreter','latex')
 ylabel('$\Delta \dot{y}$ (km)', 'Interpreter','latex')
 legend()
 grid()
 
 nexttile;
-title('$\dot{z}(t)$ Error', 'Interpreter','latex')
 hold on
 plot(t, true_motion(:, 6) - glsdc_traj(:, 6), 'DisplayName','GLSDC')
 plot(t, true_motion(:, 6) - monte_carlo_traj(:, 6), 'DisplayName','Monte Carlo')
 hold off
-
+title('$\dot{z}(t)$ Error', 'Interpreter','latex')
 xlabel('t (s)')
 ylabel('$\Delta \dot{z}$ (km)', 'Interpreter','latex')
 legend()
@@ -326,7 +320,6 @@ npoints = 60;
 
 % Plotting Covariances for y-z
 figure
-title('Initial Position Estimate in y-z Plane')
 
 % Index tells to use x, y, or z [1, 2, or 3]
 idx = [2,3];
@@ -343,8 +336,9 @@ end
 
 scatter(glsdc_estimate(idx(1)), glsdc_estimate(idx(2)), 'b', 'filled', 'DisplayName','GLSDC Estimate')
 scatter(monte_carlo_estimate(idx(1)), monte_carlo_estimate(idx(2)), [], 'r', 'filled')
-scatter(y0(idx(1)), y0(idx(2)), 'k', '+', 'DisplayName', 'True Initial State')
-
+scatter(y0(idx(1)), y0(idx(2)), 50, 'k', '+', 'DisplayName', 'True Initial State', 'LineWidth',2)
+hold off
+title('Initial Position Estimate in y-z Plane')
 xlabel('y (km)')
 ylabel('z (km)')
 legend('GLSDC', '', '', 'Monte Carlo', '', '', '', '', 'True Initial State')
@@ -352,7 +346,6 @@ exportgraphics(gca, 'Images/cov_yz.png', 'Resolution',300);
 
 % Plotting covariance for x-z
 figure
-title('Initial Position Estimate in x-z Plane')
 
 % Index tells to use x, y, or z [1, 2, or 3]
 idx = [1,3];
@@ -368,8 +361,9 @@ for scale = 1:3
 end
 scatter(glsdc_estimate(idx(1)), glsdc_estimate(idx(2)), 'b', 'filled', 'DisplayName','GLSDC Estimate')
 scatter(monte_carlo_estimate(idx(1)), monte_carlo_estimate(idx(2)), [], 'r', 'filled')
-scatter(y0(idx(1)), y0(idx(2)), 'k', '+', 'DisplayName', 'True Initial State')
+scatter(y0(idx(1)), y0(idx(2)), 50, 'k', '+', 'DisplayName', 'True Initial State', 'LineWidth',2)
 
+title('Initial Position Estimate in x-z Plane')
 xlabel('x (km)')
 ylabel('z (km)')
 legend('GLSDC', '', '', 'Monte Carlo', '', '', '', '', 'True Initial State')
@@ -377,7 +371,6 @@ exportgraphics(gca, 'Images/cov_xz.png', 'Resolution',300);
 
 % Plotting covariance for x-y
 figure
-title('Initial Position Estimate in x-y Plane')
 
 % Index tells to use x, y, or z [1, 2, or 3]
 idx = [1,2];
@@ -395,6 +388,7 @@ scatter(glsdc_estimate(idx(1)), glsdc_estimate(idx(2)), 'b', 'filled', 'DisplayN
 scatter(monte_carlo_estimate(idx(1)), monte_carlo_estimate(idx(2)), [], 'r', 'filled')
 scatter(y0(idx(1)), y0(idx(2)), 'k', '+', 'DisplayName', 'True Initial State')
 
+title('Initial Position Estimate in x-y Plane')
 xlabel('x (km)')
 ylabel('y (km)')
 legend('GLSDC', '', '', 'Monte Carlo', '', '', '', '', 'True Initial State')
