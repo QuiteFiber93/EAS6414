@@ -17,7 +17,7 @@ LST0 = deg2rad(10); % Observer local siderial time
 tspan = [0, 100];
 
 % time values for measurements
-tmeas = 0:10:100;
+tmeas = 0:10:3000;
 
 % Computing LST at tmeas
 LST = LST0 + omega_E * tmeas;
@@ -49,6 +49,28 @@ h_cords = horizontal_coordinates(rho_obsv);
 % h_cords = measurement_model(measured_states(:, 1:3), obsv_lat, LST, R_obsv);
 % Adding Noise
 measurements = generate_measurements(h_cords, R, length(tmeas));
+
+
+%% Implementing Extended Kalman Filter
+
+% Initial guess 
+x0_ekf = [6990; 1; 1; 1; 1; 1];
+
+% Process noise covariance
+Q = eye(6) * 1E-8;
+
+% Run EKF
+[xhat_ekf, P_ekf] = EKF(x0_ekf, measurements, tmeas, Q, R, mu, obsv_lat, LST, R_obsv);
+
+% Calculating error
+ekf_error = measured_states - xhat_ekf;
+
+% Extracting 3 sigma error bounds
+sigma_bounds = zeros(length(tmeas), 6);
+for k=1:length(tmeas)
+    sigma_bounds(k, :) = 3 * sqrt(diag(P_ekf(:, :, k)));
+end
+
 %% Plotting measurements vs true trajectory in observer frame
 [t, true_motion] = ode45(func, tspan, y0, options);
 LST_true = LST0 + omega_E*t';
@@ -74,7 +96,6 @@ xlabel('t (s)')
 linkaxes([ax1, ax2, ax3], 'x')
 title(fig, 'Earth Fixed Position');
 
-exportgraphics(gcf, 'Images/body_fixed_pos.png','Resolution',300)
 
 % Plotting x, y, and z velocities in subplots and saving the figure
 fig = tiledlayout(3, 1);
@@ -92,7 +113,6 @@ ylabel('zdot(t) (km/s)')
 xlabel('t (s)')
 title(fig, 'Earth Fixed Velocity');
 
-exportgraphics(gcf, 'Images/body_fixed_vel.png','Resolution',300)
 
 figure
 % converting true trajectory from spherical (horizontal) frame to cartesian
@@ -113,7 +133,6 @@ ylabel('y (km)')
 zlabel('z (km)')
 
 % Saving plot
-exportgraphics(gca, 'Images/measurements.png','Resolution',300)
 
 % Plotting x, y, z trajectory relative to the observer vs time and
 % overlaying measurements
@@ -144,7 +163,6 @@ xlabel('t (s)')
 legend('Location','southeast')
 
 sgtitle('Position of Satellite Relative to Observer')
-exportgraphics(gcf, 'Images/cartesian_pos_measurements.png', 'Resolution',300)
 
 % Creating a figure which shows the altitude and azimuth of the satellite
 % overhead from frame of observer
@@ -170,30 +188,19 @@ title('True Range vs Range Measurements')
 xlabel('t (s)')
 ylabel('Range (km)')
 legend()
+
+
+exportgraphics(gcf, 'Images/body_fixed_pos.png','Resolution',300)
+exportgraphics(gcf, 'Images/body_fixed_vel.png','Resolution',300)
+
+exportgraphics(gca, 'Images/measurements.png','Resolution',300)
+exportgraphics(gcf, 'Images/cartesian_pos_measurements.png', 'Resolution',300)
 exportgraphics(gcf, 'Images/range_plot.png', 'Resolution',300)
-
-%% Implementing Extended Kalman Filter
-
-% Initial guess 
-x0_ekf = [6990; 1; 1; 1; 1; 1];
-
-% Process noise covariance
-Q = diag([1, 1, 1, 0.01, 0.01, 0.01]);
-
-% Run EKF
-[xhat_ekf, P_ekf] = EKF(x0_ekf, measurements, tmeas, Q, R, mu, obsv_lat, LST, R_obsv);
-
-% Calculating error
-ekf_error = measured_states - xhat_ekf;
-
-% Extracting 3 sigma error bounds
-sigma_bounds = zeros(length(tmeas), 6);
-for k=1:length(tmeas)
-    sigma_bounds(k, :) = 3 * sqrt(diag(P_ekf(:, :, k)));
-end
 
 %% Plotting Error For EKF
 
+figure
+title('Position Error')
 subplot(3, 1, 1)
 hold on
 plot(tmeas, ekf_error(:, 1), 'DisplayName','Error')
@@ -220,6 +227,36 @@ plot(tmeas, -sigma_bounds(:, 3), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off
 hold off
 ylabel('z Error (km)')
 legend()
+
+figure
+title('Velocity Error')
+subplot(3, 1, 1)
+hold on
+plot(tmeas, ekf_error(:, 4), 'DisplayName','Error')
+plot(tmeas, sigma_bounds(:, 4), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
+plot(tmeas, -sigma_bounds(:, 4), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
+hold off
+ylabel('xdot Error (km/s)')
+legend()
+
+subplot(3, 1, 2)
+hold on
+plot(tmeas, ekf_error(:, 5), 'DisplayName','Error')
+plot(tmeas, sigma_bounds(:, 5), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
+plot(tmeas, -sigma_bounds(:, 5), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
+hold off
+ylabel('ydot Error (km/s)')
+legend()
+
+subplot(3, 1, 3)
+hold on
+plot(tmeas, ekf_error(:, 6), 'DisplayName','Error')
+plot(tmeas, sigma_bounds(:, 6), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
+plot(tmeas, -sigma_bounds(:, 6), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
+hold off
+ylabel('zdot Error (km/s)')
+legend()
+
 
 %% Function Definitions
 
@@ -284,21 +321,17 @@ function ydot = combined_dynamics(t, y, Q, mu)
 end
 
 % EKF
-% EKF with debugging
 function [xhat, P_out] = EKF(x0, ytilde, tmeas, Q, R, mu, obsv_lat, LST, R_obsv)
     
     n_meas = length(tmeas);
     
     % Creating variables to store results
-    xhat = zeros(n_meas, 6);
+    xhat = zeros(n_meas, 6); 
     P_out = zeros(6, 6, n_meas);
     
     % Initializing
     xhat_minus = x0;
-    P_minus = diag([1e6, 1e6, 1e6, 1e3, 1e3, 1e3]);
-    
-    fprintf('\n=== EKF Debug Info ===\n');
-    fprintf('Initial state: [%.2f, %.2f, %.2f, %.4f, %.4f, %.4f]\n', x0);
+    P_minus = eye(6) * 1E6;
 
     % Iterating through measurements
     for k = 1:n_meas
@@ -310,27 +343,12 @@ function [xhat, P_out] = EKF(x0, ytilde, tmeas, Q, R, mu, obsv_lat, LST, R_obsv)
         rho_obsv = observer_range(rho_inertial, obsv_lat, LST(k));
         y_prediction = horizontal_coordinates(rho_obsv)';
 
-        % Innovation (measurement residual)
-        innovation = ytilde(k, :)' - y_prediction;
-        
         % Computing Kalman Gain
-        S = H_k * P_minus * H_k' + R;  % Innovation covariance
-        K_k = P_minus * H_k' / S;
+        K_k = P_minus * H_k' / (H_k * P_minus * H_k' + R);
     
         % Updating state and covariance estimates
-        xhat_plus = xhat_minus + K_k * innovation;
-        I_KH = eye(6) - K_k * H_k;
-        P_plus = I_KH * P_minus * I_KH' + K_k * R * K_k';
-    
-        % Debug output for first few iterations
-        if k <= 3
-            fprintf('\n--- Iteration k=%d (t=%.1f) ---\n', k, tmeas(k));
-            fprintf('Innovation: [%.4f, %.6f, %.6f]\n', innovation);
-            fprintf('Max Kalman Gain: %.6f\n', max(abs(K_k(:))));
-            fprintf('Trace(P_minus): %.2e\n', trace(P_minus));
-            fprintf('Trace(P_plus): %.2e\n', trace(P_plus));
-            fprintf('State update magnitude: %.4f\n', norm(K_k * innovation));
-        end
+        xhat_plus = xhat_minus + K_k * (ytilde(k, :)' - y_prediction);
+        P_plus = (eye(6) - K_k*H_k) * P_minus * (eye(6) - K_k*H_k)' + K_k * R * K_k'; 
 
         % Storing results
         xhat(k, :) = xhat_plus';
@@ -351,12 +369,13 @@ function [xhat, P_out] = EKF(x0, ytilde, tmeas, Q, R, mu, obsv_lat, LST, R_obsv)
             
         end
     end
-    
-    fprintf('\n=== End EKF ===\n\n');
 end
 
 % This function calculates the partials used for the EKF
 function H_k = compute_H(x, obsv_lat, LST, R_obsv)
+
+    % H_k = [H_11, 0];
+    % H_11 = [drho/dx; daz/dx; del/dx]
 
     % Defining measurement values
     r_inertial = x(1:3);
@@ -371,16 +390,19 @@ function H_k = compute_H(x, obsv_lat, LST, R_obsv)
 
     % Preallocating H11
     H11 = zeros(3, 3);
-
+    
+    % First Row
     H11(1, 1) = (rho_u * cos(obsv_lat) * cos(LST) - rho_e * sin(LST) - rho_n * sin(obsv_lat) * cos(LST)) / rho_mag;
     H11(1, 2) = (rho_u * cos(obsv_lat) * sin(LST) + rho_e * cos(LST) - rho_n * sin(obsv_lat) * sin(LST)) / rho_mag;
     H11(1, 3) = (rho_u * sin(obsv_lat) + rho_n * cos(obsv_lat)) / rho_mag;
-
+    
+    % Second Row
     denom_az = rho_n^2 + rho_e^2;
     H11(2, 1) = (rho_e * sin(obsv_lat) * cos(LST) - rho_n * sin(LST)) / denom_az;
     H11(2, 2) = (rho_e * sin(obsv_lat) * sin(LST) + rho_n * cos(LST)) / denom_az;
     H11(2, 3) = -rho_e * cos(obsv_lat) / denom_az;
-
+    
+    % Third Row
     denom_el = rho_mag * sqrt(rho_mag^2 - rho_u^2);
     H11(3, 1) = (rho_mag * cos(obsv_lat) * cos(LST) - rho_u * H11(1, 1)) / denom_el;
     H11(3, 2) = (rho_mag * cos(obsv_lat) * sin(LST) - rho_u * H11(1, 2)) / denom_el;

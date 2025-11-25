@@ -17,7 +17,7 @@ LST0 = deg2rad(10); % Observer local siderial time
 tspan = [0, 100];
 
 % time values for measurements
-tmeas = 0:10:100;
+tmeas = 0:10:3000;
 
 % Computing LST at tmeas
 LST = LST0 + omega_E * tmeas;
@@ -57,7 +57,7 @@ measurements = generate_measurements(h_cords, R, length(tmeas));
 x0_ekf = [6990; 1; 1; 1; 1; 1];
 
 % Process noise covariance
-Q = eye(6) * 1E-10;
+Q = eye(6) * 1E-8;
 
 % Run EKF
 [xhat_ekf, P_ekf] = EKF(x0_ekf, measurements, tmeas, Q, R, mu, obsv_lat, LST, R_obsv);
@@ -96,7 +96,6 @@ xlabel('t (s)')
 linkaxes([ax1, ax2, ax3], 'x')
 title(fig, 'Earth Fixed Position');
 
-exportgraphics(gcf, 'Images/body_fixed_pos.png','Resolution',300)
 
 % Plotting x, y, and z velocities in subplots and saving the figure
 fig = tiledlayout(3, 1);
@@ -114,7 +113,6 @@ ylabel('zdot(t) (km/s)')
 xlabel('t (s)')
 title(fig, 'Earth Fixed Velocity');
 
-exportgraphics(gcf, 'Images/body_fixed_vel.png','Resolution',300)
 
 figure
 % converting true trajectory from spherical (horizontal) frame to cartesian
@@ -125,7 +123,7 @@ el_true = h_cords_true_motion(:, 3);
 plot3(x_obsv, y_obsv, z_obsv, 'DisplayName','True Trajectory');
 hold on
 [x_meas, y_meas, z_meas] = sph2cart(measurements(:, 2), measurements(:, 3), measurements(:, 1));
-scatter3(x_meas, y_meas, z_meas, 10, 'filled', 'DisplayName', 'Measured Positions');
+scatter3(x_meas, y_meas, z_meas, 5, 'filled', 'DisplayName', 'Measured Positions');
 hold off
 title('True Trajectory vs Measured States')
 grid()
@@ -135,7 +133,6 @@ ylabel('y (km)')
 zlabel('z (km)')
 
 % Saving plot
-exportgraphics(gca, 'Images/measurements.png','Resolution',300)
 
 % Plotting x, y, z trajectory relative to the observer vs time and
 % overlaying measurements
@@ -143,7 +140,7 @@ figure;
 ax1 = subplot(3, 1, 1);
 hold on
 plot(ax1, t, x_obsv, 'DisplayName','True')
-scatter(ax1, tmeas, x_meas, 10, 'filled', 'DisplayName','Measured')
+scatter(ax1, tmeas, x_meas, 5, 'filled', 'DisplayName','Measured')
 hold off
 ylabel('x(t) (km)')
 legend('Location','southeast')
@@ -151,7 +148,7 @@ legend('Location','southeast')
 ax2 = subplot(3, 1, 2);
 hold on
 plot(ax2, t, y_obsv, 'DisplayName','True')
-scatter(ax2, tmeas, y_meas, 10, 'filled', 'DisplayName','Measured')
+scatter(ax2, tmeas, y_meas, 5, 'filled', 'DisplayName','Measured')
 hold off
 ylabel('y(t) (km)')
 legend('Location','southeast')
@@ -159,43 +156,50 @@ legend('Location','southeast')
 ax3 = subplot(3, 1, 3);
 hold on
 plot(ax3, t, z_obsv, 'DisplayName','True')
-scatter(ax3, tmeas, z_meas, 10, 'filled', 'DisplayName','Measured')
+scatter(ax3, tmeas, z_meas, 5, 'filled', 'DisplayName','Measured')
 hold off
 ylabel('z(t) (km)')
 xlabel('t (s)')
 legend('Location','southeast')
 
 sgtitle('Position of Satellite Relative to Observer')
-exportgraphics(gcf, 'Images/cartesian_pos_measurements.png', 'Resolution',300)
 
 % Creating a figure which shows the altitude and azimuth of the satellite
 % overhead from frame of observer
 figure
 polarplot(az_true, 90 - rad2deg(el_true), 'DisplayName','True Trajectory')
 hold on
-polarscatter(measurements(:, 2), 90 - rad2deg(measurements(:, 3)), 7, 'filled', 'DisplayName','Measurements')
+polarscatter(measurements(:, 2), 90 - rad2deg(measurements(:, 3)), 5, 'filled', 'DisplayName','Measurements')
 hold off
 title('Polar Plot for Altitude and Azimuth')
 rlim([0, 90])
 ax = gca;
 ax.RTick = 0:30:90;
 ax.RTickLabel = {'90°', '60°', '30°', '0°'};
-exportgraphics(gcf, 'Images/alt_az_plot.png', 'Resolution',300)
 
 % Plotting Range vs Range Measurements
 figure
 plot(t, rho_true, 'DisplayName','True Range')
 hold on
-scatter(tmeas, measurements(:, 1), 10, 'filled', 'DisplayName','Range Measurements')
+scatter(tmeas, measurements(:, 1), 5, 'filled', 'DisplayName','Range Measurements')
 hold off
 title('True Range vs Range Measurements')
 xlabel('t (s)')
 ylabel('Range (km)')
 legend()
+
+
+exportgraphics(gcf, 'Images/body_fixed_pos.png','Resolution',300)
+exportgraphics(gcf, 'Images/body_fixed_vel.png','Resolution',300)
+exportgraphics(gca, 'Images/measurements.png','Resolution',300)
+exportgraphics(gcf, 'Images/cartesian_pos_measurements.png', 'Resolution',300)
+exportgraphics(gcf, 'Images/alt_az_plot.png', 'Resolution',300)
 exportgraphics(gcf, 'Images/range_plot.png', 'Resolution',300)
 
 %% Plotting Error For EKF
 
+figure
+title('Position Error')
 subplot(3, 1, 1)
 hold on
 plot(tmeas, ekf_error(:, 1), 'DisplayName','Error')
@@ -221,6 +225,35 @@ plot(tmeas, sigma_bounds(:, 3), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma')
 plot(tmeas, -sigma_bounds(:, 3), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
 hold off
 ylabel('z Error (km)')
+legend()
+
+figure
+title('Velocity Error')
+subplot(3, 1, 1)
+hold on
+plot(tmeas, ekf_error(:, 4), 'DisplayName','Error')
+plot(tmeas, sigma_bounds(:, 4), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
+plot(tmeas, -sigma_bounds(:, 4), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
+hold off
+ylabel('xdot Error (km/s)')
+legend()
+
+subplot(3, 1, 2)
+hold on
+plot(tmeas, ekf_error(:, 5), 'DisplayName','Error')
+plot(tmeas, sigma_bounds(:, 5), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
+plot(tmeas, -sigma_bounds(:, 5), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
+hold off
+ylabel('ydot Error (km/s)')
+legend()
+
+subplot(3, 1, 3)
+hold on
+plot(tmeas, ekf_error(:, 6), 'DisplayName','Error')
+plot(tmeas, sigma_bounds(:, 6), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
+plot(tmeas, -sigma_bounds(:, 6), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
+hold off
+ylabel('zdot Error (km/s)')
 legend()
 
 
@@ -314,7 +347,7 @@ function [xhat, P_out] = EKF(x0, ytilde, tmeas, Q, R, mu, obsv_lat, LST, R_obsv)
     
         % Updating state and covariance estimates
         xhat_plus = xhat_minus + K_k * (ytilde(k, :)' - y_prediction);
-        P_plus = (eye(6) - K_k * H_k) * P_minus; 
+        P_plus = (eye(6) - K_k*H_k) * P_minus * (eye(6) - K_k*H_k)' + K_k * R * K_k'; 
 
         % Storing results
         xhat(k, :) = xhat_plus';
