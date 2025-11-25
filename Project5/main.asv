@@ -219,26 +219,22 @@ function noisy_measurements = generate_measurements(h_cords, R, n)
 end
 
 % Function to integrate Two Body mechanics and STM ODE
-function ydot = twobody_STM(t, y, mu)
+function ydot = combined_dynamics(t, y, Q, mu)
     r = y(1:3);
     v = y(4:6);
-    Phi = reshape(y(7:42), 6, 6);
-
-    % Phidot = df/dx * Phi
-    % A = df/dx = [dv/dr, dv/dv; dvdot/dr, dvdot/dv]
-    %           = [0, I; A_21, 0]
-    A = [zeros(3), eye(3); 3*mu/norm(r)^5*(r*r') - mu/norm(r)^3*eye(3), zeros(3)];
-    Phidot = A * Phi;
-    ydot = [v; -mu*r/norm(r)^3; Phidot(:)];
+    xdot = [v; -mu/norm(r)^3*r];
+    
+    % Computing State Jacobian
+    r_mag = noprm
 end
 
 % EKF
-function [x_hat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
+function [xhat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
     
     n_meas = length(tmeas);
     
     % Creating variables to store results
-    x_hat = zeros(n_meas);
+    xhat = zeros(n_meas);
     P = zeros(6, 6, n_meas);
     
     % Initializing
@@ -248,20 +244,32 @@ function [x_hat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
     % Iterating through measurements
     for k = 1:n_meas
         % Computing H_k and expected measurements
-        H_k = H()
+        H_k = H(x, obsv_lat, LST, R_obsv);
+        
+        r_inertial = xhat_minus(1:3);
+        rho_inertial = inertial_range(r_inertial', R_obsv, obsv_lat, LST(k));
+        rho_obsv = observer_range(rho_inertial, obsv_lat, LST(k));
+        y_prediction = horizontal_coordinates(rho_obsv)';
+
         % Computing Kalman Gain
-    
+        K_k = P_minus * H' / (H * P_minus * H' + R);
     
         % Updating state and covariance estimates
-    
+        xhat_plus = xhat_minus + K_k * (yk(k, :)' - y_prediction);
+        P_plus = (eye(6) - K * H) * P_minus;
+
         % Storing results
+        xhat(k, :) = xhat_plus';
+        P(:, :, k) = P_plus;
 
         % Propogating to the next time step
         if k < n_meas
             % Defining time span and ODE options
+            tspan = [tmeas(k), tmeas(k+1)];
+            options = odeset('RelTol',1E-8, 'AbsTol',1E-10);
 
             % Propogating state
-
+            [~, x]
             
         end
     end

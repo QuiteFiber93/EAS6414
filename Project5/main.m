@@ -175,8 +175,6 @@ exportgraphics(gcf, 'Images/range_plot.png', 'Resolution',300)
 %% Implementing Extended Kalman Filter
 
 
-
-
 %% Function Definitions
 
 % Function for true twobody motion
@@ -218,18 +216,24 @@ function noisy_measurements = generate_measurements(h_cords, R, n)
     noisy_measurements = h_cords + noise;
 end
 
-% Function to integrate Two Body mechanics and STM ODE
-function ydot = twobody_STM(t, y, mu)
+% Function to integrate Two Body mechanics and Evolution of covariance
+function ydot = combined_dynamics(t, y, Q, mu)
     r = y(1:3);
     v = y(4:6);
-    Phi = reshape(y(7:42), 6, 6);
+    xdot = [v; -mu/norm(r)^3*r];
+    
+    % Computing State Jacobian
+    r_mag = nomr(r);
+    F = zeros(6, 6);
+    % dv/dv = I
+    F(1:3, 4:6) = eye(3);
+    F(4:6, 1:3) = 3*mu/r_mag^5 * (r*r') - mu/r_mag^3 * eye(3);
 
-    % Phidot = df/dx * Phi
-    % A = df/dx = [dv/dr, dv/dv; dvdot/dr, dvdot/dv]
-    %           = [0, I; A_21, 0]
-    A = [zeros(3), eye(3); 3*mu/norm(r)^5*(r*r') - mu/norm(r)^3*eye(3), zeros(3)];
-    Phidot = A * Phi;
-    ydot = [v; -mu*r/norm(r)^3; Phidot(:)];
+    % Covariance Dynamics
+    Pdot = F * P + P * F' + Q;
+
+    % Combined state dynamics
+    ydot = [xdot; Pdot(:)];
 end
 
 % EKF
@@ -269,9 +273,15 @@ function [xhat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
         % Propogating to the next time step
         if k < n_meas
             % Defining time span and ODE options
+            tspan = [tmeas(k), tmeas(k+1)];
+            options = odeset('RelTol',1E-8, 'AbsTol',1E-10);
 
-            % Propogating state
-
+            % Propogating state and covariance
+            initial_state = [xhat_plus; P_plus(:)];
+            [~, state_prop] = ode45(@(t, y) combined_dynamics(t, y, Q, mu), tspan, initial_state, options);
+            next_step = state_prop(end, :)';
+            xhat_minus = next_step(1:6);
+            P_minus = reshape(next_step(7:42), 6, 6);
             
         end
     end
