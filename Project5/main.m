@@ -49,6 +49,28 @@ h_cords = horizontal_coordinates(rho_obsv);
 % h_cords = measurement_model(measured_states(:, 1:3), obsv_lat, LST, R_obsv);
 % Adding Noise
 measurements = generate_measurements(h_cords, R, length(tmeas));
+
+
+%% Implementing Extended Kalman Filter
+
+% Initial guess 
+x0_ekf = [6990; 1; 1; 1; 1; 1];
+
+% Process noise covariance
+Q = eye(6) * 1E-10;
+
+% Run EKF
+[xhat_ekf, P_ekf] = EKF(x0_ekf, measurements, tmeas, Q, R, mu, obsv_lat, LST, R_obsv);
+
+% Calculating error
+ekf_error = measured_states - xhat_ekf;
+
+% Extracting 3 sigma error bounds
+sigma_bounds = zeros(length(tmeas), 6);
+for k=1:length(tmeas)
+    sigma_bounds(k, :) = 3 * sqrt(diag(P_ekf(:, :, k)));
+end
+
 %% Plotting measurements vs true trajectory in observer frame
 [t, true_motion] = ode45(func, tspan, y0, options);
 LST_true = LST0 + omega_E*t';
@@ -172,7 +194,34 @@ ylabel('Range (km)')
 legend()
 exportgraphics(gcf, 'Images/range_plot.png', 'Resolution',300)
 
-%% Implementing Extended Kalman Filter
+%% Plotting Error For EKF
+
+subplot(3, 1, 1)
+hold on
+plot(tmeas, ekf_error(:, 1), 'DisplayName','Error')
+plot(tmeas, sigma_bounds(:, 1), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
+plot(tmeas, -sigma_bounds(:, 1), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
+hold off
+ylabel('x Error (km)')
+legend()
+
+subplot(3, 1, 2)
+hold on
+plot(tmeas, ekf_error(:, 2), 'DisplayName','Error')
+plot(tmeas, sigma_bounds(:, 2), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
+plot(tmeas, -sigma_bounds(:, 2), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
+hold off
+ylabel('y Error (km)')
+legend()
+
+subplot(3, 1, 3)
+hold on
+plot(tmeas, ekf_error(:, 3), 'DisplayName','Error')
+plot(tmeas, sigma_bounds(:, 3), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
+plot(tmeas, -sigma_bounds(:, 3), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
+hold off
+ylabel('z Error (km)')
+legend()
 
 
 %% Function Definitions
@@ -223,13 +272,14 @@ function ydot = combined_dynamics(t, y, Q, mu)
     xdot = [v; -mu/norm(r)^3*r];
     
     % Computing State Jacobian
-    r_mag = nomr(r);
+    r_mag = norm(r);
     F = zeros(6, 6);
     % dv/dv = I
     F(1:3, 4:6) = eye(3);
     F(4:6, 1:3) = 3*mu/r_mag^5 * (r*r') - mu/r_mag^3 * eye(3);
 
     % Covariance Dynamics
+    P = reshape(y(7:42), 6, 6);
     Pdot = F * P + P * F' + Q;
 
     % Combined state dynamics
@@ -237,22 +287,22 @@ function ydot = combined_dynamics(t, y, Q, mu)
 end
 
 % EKF
-function [xhat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
+function [xhat, P_out] = EKF(x0, ytilde, tmeas, Q, R, mu, obsv_lat, LST, R_obsv)
     
     n_meas = length(tmeas);
     
     % Creating variables to store results
-    xhat = zeros(n_meas);
-    P = zeros(6, 6, n_meas);
+    xhat = zeros(n_meas, 6); 
+    P_out = zeros(6, 6, n_meas);
     
     % Initializing
     xhat_minus = x0;
-    P_minus = eye(6)* 1e3;
+    P_minus = eye(6) * 1E6;
 
     % Iterating through measurements
     for k = 1:n_meas
         % Computing H_k and expected measurements
-        H_k = H(x, obsv_lat, LST, R_obsv);
+        H_k = compute_H(xhat_minus, obsv_lat, LST(k), R_obsv);
         
         r_inertial = xhat_minus(1:3);
         rho_inertial = inertial_range(r_inertial', R_obsv, obsv_lat, LST(k));
@@ -260,23 +310,23 @@ function [xhat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
         y_prediction = horizontal_coordinates(rho_obsv)';
 
         % Computing Kalman Gain
-        K_k = P_minus * H' / (H * P_minus * H' + R);
+        K_k = P_minus * H_k' / (H_k * P_minus * H_k' + R);
     
         % Updating state and covariance estimates
-        xhat_plus = xhat_minus + K_k * (yk(k, :)' - y_prediction);
-        P_plus = (eye(6) - K * H) * P_minus;
+        xhat_plus = xhat_minus + K_k * (ytilde(k, :)' - y_prediction);
+        P_plus = (eye(6) - K_k * H_k) * P_minus; 
 
         % Storing results
         xhat(k, :) = xhat_plus';
-        P(:, :, k) = P_plus;
+        P_out(:, :, k) = P_plus;
 
-        % Propogating to the next time step
+        % Propagating to the next time step
         if k < n_meas
             % Defining time span and ODE options
             tspan = [tmeas(k), tmeas(k+1)];
             options = odeset('RelTol',1E-8, 'AbsTol',1E-10);
 
-            % Propogating state and covariance
+            % Propagating state and covariance
             initial_state = [xhat_plus; P_plus(:)];
             [~, state_prop] = ode45(@(t, y) combined_dynamics(t, y, Q, mu), tspan, initial_state, options);
             next_step = state_prop(end, :)';
@@ -287,6 +337,42 @@ function [xhat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
     end
 end
 
-function H_k = H(x, obsv_lat, LST, R_obsv)
-    H_k = 0;
+% This function calculates the partials used for the EKF
+function H_k = compute_H(x, obsv_lat, LST, R_obsv)
+
+    % H_k = [H_11, 0];
+    % H_11 = [drho/dx; daz/dx; del/dx]
+
+    % Defining measurement values
+    r_inertial = x(1:3);
+    rho_inertial = inertial_range(r_inertial', R_obsv, obsv_lat, LST);
+    rho_obsv = observer_range(rho_inertial, obsv_lat, LST);
+
+    % Extract components
+    rho_u = rho_obsv(1);
+    rho_e = rho_obsv(2);
+    rho_n = rho_obsv(3);
+    rho_mag = norm(rho_obsv);
+
+    % Preallocating H11
+    H11 = zeros(3, 3);
+    
+    % First Row
+    H11(1, 1) = (rho_u * cos(obsv_lat) * cos(LST) - rho_e * sin(LST) - rho_n * sin(obsv_lat) * cos(LST)) / rho_mag;
+    H11(1, 2) = (rho_u * cos(obsv_lat) * sin(LST) + rho_e * cos(LST) - rho_n * sin(obsv_lat) * sin(LST)) / rho_mag;
+    H11(1, 3) = (rho_u * sin(obsv_lat) + rho_n * cos(obsv_lat)) / rho_mag;
+    
+    % Second Row
+    denom_az = rho_n^2 + rho_e^2;
+    H11(2, 1) = (rho_e * sin(obsv_lat) * cos(LST) - rho_n * sin(LST)) / denom_az;
+    H11(2, 2) = (rho_e * sin(obsv_lat) * sin(LST) + rho_n * cos(LST)) / denom_az;
+    H11(2, 3) = -rho_e * cos(obsv_lat) / denom_az;
+    
+    % Third Row
+    denom_el = rho_mag * sqrt(rho_mag^2 - rho_u^2);
+    H11(3, 1) = (rho_mag * cos(obsv_lat) * cos(LST) - rho_u * H11(1, 1)) / denom_el;
+    H11(3, 2) = (rho_mag * cos(obsv_lat) * sin(LST) - rho_u * H11(1, 2)) / denom_el;
+    H11(3, 3) = (rho_mag * sin(obsv_lat) - rho_u * H11(1, 3)) / denom_el;
+    
+    H_k = [H11, zeros(3, 3)];
 end
