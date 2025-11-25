@@ -233,12 +233,12 @@ function ydot = twobody_STM(t, y, mu)
 end
 
 % EKF
-function [xhat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
+function [x_hat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
     
     n_meas = length(tmeas);
     
     % Creating variables to store results
-    xhat = zeros(n_meas);
+    x_hat = zeros(n_meas);
     P = zeros(6, 6, n_meas);
     
     % Initializing
@@ -248,23 +248,13 @@ function [xhat, P] = EKF(dynamics, x0, ytilde, tmeas, Q, R)
     % Iterating through measurements
     for k = 1:n_meas
         % Computing H_k and expected measurements
-        H_k = H(x, obsv_lat, LST, R_obsv);
-        
-        r_inertial = xhat_minus(1:3);
-        rho_inertial = inertial_range(r_inertial', R_obsv, obsv_lat, LST(k));
-        rho_obsv = observer_range(rho_inertial, obsv_lat, LST(k));
-        y_prediction = horizontal_coordinates(rho_obsv)';
-
+        H_k = H()
         % Computing Kalman Gain
-        K_k = P_minus * H' / (H * P_minus * H' + R);
+    
     
         % Updating state and covariance estimates
-        xhat_plus = xhat_minus + K_k * (yk(k, :)' - y_prediction);
-        P_plus = (eye(6) - K * H) * P_minus;
-
+    
         % Storing results
-        xhat(k, :) = xhat_plus';
-        P(:, :, k) = P_plus;
 
         % Propogating to the next time step
         if k < n_meas
