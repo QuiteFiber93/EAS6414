@@ -1,0 +1,268 @@
+%% Initial Conditions and Constants
+clear; clc; close all;
+r0 = [7000; 1000; 200]; % km
+v0 = [4; 7; 2]; % km/s
+y0 = [r0; v0]; % Combined initial state
+
+% Physical
+R_obsv = 6371;% Radius of Earth in km
+omega_E = 7.2921159E-5; % rad/s
+mu = 398600.4415; % Gravitational paramter of earth
+
+% Positional Constants
+obsv_lat = deg2rad(5); % Observer latitude
+LST0 = deg2rad(10); % Observer local siderial time
+
+% tspan for trajectory integration
+tspan = [0, 100];
+
+% time values for measurements
+tmeas = 0:10:100;
+
+% Computing LST at tmeas
+LST = LST0 + omega_E * tmeas;
+
+% Noise Covariance
+sigma_rho = 1; % km
+sigma_az = deg2rad(0.01); % rad
+sigma_el = deg2rad(0.01); % rad
+R = diag([sigma_rho^2, sigma_az^2, sigma_el^2]);
+
+% Delimeter for text/section outputs
+delim_eq = repelem('=', 70);
+delim_dash = repelem('-', 70);
+%% Generating Measurements
+
+% Simulating true motion
+func = @(t, y) twobody(t, y, mu);
+options = odeset('RelTol',1E-8, 'AbsTol',1E-10);
+[~, measured_states] = ode45(func, tmeas, y0, options);
+
+% Generating inertial range vector
+rho = inertial_range(measured_states(:, 1:3), R_obsv, obsv_lat, LST);
+
+% Range vector in observer frame
+rho_obsv = observer_range(rho, obsv_lat, LST);
+
+% Collecting measurements
+h_cords = horizontal_coordinates(rho_obsv);
+
+% Adding Noise
+measurements = generate_measurements(h_cords, R, length(tmeas));
+%% Plotting measurements vs true trajectory in observer frame
+[t, true_motion] = ode45(func, tspan, y0, options);
+LST_true = LST0 + omega_E*t';
+rho_true_motion = inertial_range(true_motion(:, 1:3), R_obsv, obsv_lat, LST_true);
+rho_obsv_true_motion = observer_range(rho_true_motion, obsv_lat, LST_true);
+h_cords_true_motion = horizontal_coordinates(rho_obsv_true_motion);
+
+% Figure Plotting true trajectory
+% Creating subplots for x, y, and z
+fig = tiledlayout(3, 1);
+ax1 = nexttile;
+plot(ax1, t, true_motion(:, 1))
+ylabel('x(t) (km)')
+
+ax2 = nexttile;
+plot(ax2, t, true_motion(:, 2))
+ylabel('y(t) (km)')
+
+ax3 = nexttile;
+plot(ax3, t, true_motion(:, 3))
+ylabel('z(t) (km)')
+xlabel('t (s)')
+linkaxes([ax1, ax2, ax3], 'x')
+title(fig, 'Earth Fixed Position');
+
+exportgraphics(gcf, 'Images/body_fixed_pos.png','Resolution',300)
+
+% Plotting x, y, and z velocities in subplots and saving the figure
+fig = tiledlayout(3, 1);
+ax1 = nexttile;
+plot(ax1, t, true_motion(:, 4))
+ylabel('xdot(t) (km/s)')
+
+ax2 = nexttile;
+plot(ax2, t, true_motion(:, 5))
+ylabel('ydot(t) (km/s)')
+
+ax3 = nexttile;
+plot(ax3, t, true_motion(:, 6))
+ylabel('zdot(t) (km/s)')
+xlabel('t (s)')
+title(fig, 'Earth Fixed Velocity');
+
+exportgraphics(gcf, 'Images/body_fixed_vel.png','Resolution',300)
+
+figure
+% converting true trajectory from spherical (horizontal) frame to cartesian
+rho_true = h_cords_true_motion(:, 1);
+az_true = h_cords_true_motion(:, 2);
+el_true = h_cords_true_motion(:, 3);
+[x_obsv, y_obsv, z_obsv] = sph2cart(az_true, el_true, rho_true);
+plot3(x_obsv, y_obsv, z_obsv, 'DisplayName','True Trajectory');
+hold on
+[x_meas, y_meas, z_meas] = sph2cart(measurements(:, 2), measurements(:, 3), measurements(:, 1));
+scatter3(x_meas, y_meas, z_meas, 10, 'filled', 'DisplayName', 'Measured Positions');
+hold off
+title('True Trajectory vs Measured States')
+grid()
+legend('Location','northeast')
+xlabel('x (km)')
+ylabel('y (km)')
+zlabel('z (km)')
+
+% Saving plot
+exportgraphics(gca, 'Images/measurements.png','Resolution',300)
+
+% Plotting x, y, z trajectory relative to the observer vs time and
+% overlaying measurements
+figure;
+ax1 = subplot(3, 1, 1);
+hold on
+plot(ax1, t, x_obsv, 'DisplayName','True')
+scatter(ax1, tmeas, x_meas, 10, 'filled', 'DisplayName','Measured')
+hold off
+ylabel('x(t) (km)')
+legend('Location','southeast')
+
+ax2 = subplot(3, 1, 2);
+hold on
+plot(ax2, t, y_obsv, 'DisplayName','True')
+scatter(ax2, tmeas, y_meas, 10, 'filled', 'DisplayName','Measured')
+hold off
+ylabel('y(t) (km)')
+legend('Location','southeast')
+
+ax3 = subplot(3, 1, 3);
+hold on
+plot(ax3, t, z_obsv, 'DisplayName','True')
+scatter(ax3, tmeas, z_meas, 10, 'filled', 'DisplayName','Measured')
+hold off
+ylabel('z(t) (km)')
+xlabel('t (s)')
+legend('Location','southeast')
+
+sgtitle('Position of Satellite Relative to Observer')
+exportgraphics(gcf, 'Images/cartesian_pos_measurements.png', 'Resolution',300)
+
+% Creating a figure which shows the altitude and azimuth of the satellite
+% overhead from frame of observer
+figure
+polarplot(az_true, 90 - rad2deg(el_true), 'DisplayName','True Trajectory')
+hold on
+polarscatter(measurements(:, 2), 90 - rad2deg(measurements(:, 3)), 7, 'filled', 'DisplayName','Measurements')
+hold off
+title('Polar Plot for Altitude and Azimuth')
+rlim([0, 90])
+ax = gca;
+ax.RTick = 0:30:90;
+ax.RTickLabel = {'90°', '60°', '30°', '0°'};
+exportgraphics(gcf, 'Images/alt_az_plot.png', 'Resolution',300)
+
+% Plotting Range vs Range Measurements
+figure
+plot(t, rho_true, 'DisplayName','True Range')
+hold on
+scatter(tmeas, measurements(:, 1), 10, 'filled', 'DisplayName','Range Measurements')
+hold off
+title('True Range vs Range Measurements')
+xlabel('t (s)')
+ylabel('Range (km)')
+legend()
+exportgraphics(gcf, 'Images/range_plot.png', 'Resolution',300)
+
+%% Implementing Extended Kalman Filter
+
+
+
+
+%% Function Definitions
+
+% Function for true twobody motion
+function ydot = twobody(t, y, mu)
+    r = y(1:3);
+    v = y(4:6);
+    ydot = [v; -mu/norm(r)^3*r];
+end
+
+% Function to convert from twobody relative position to inertial range
+function rho = inertial_range(r, R, obsv_lat, LST)
+    transformation = R * [cos(obsv_lat)*cos(LST); cos(obsv_lat)*sin(LST); sin(obsv_lat)*ones(size(LST))]';
+    rho = r - transformation;
+end
+
+% Function translates inertial slant range to observer frame
+function rho_obsv = observer_range(rho, obsv_lat, LST)
+    rho_obsv = zeros(size(rho));
+    rotation2 = [cos(obsv_lat), 0, sin(obsv_lat); 0, 1, 0; -sin(obsv_lat), 0, cos(obsv_lat)];
+    for k =1:length(LST)
+        LST_k = LST(k);
+        rotation1 = [cos(LST_k), sin(LST_k), 0; -sin(LST_k), cos(LST_k), 0; 0, 0, 1];
+        rho_obsv(k, :) = (rotation2 * rotation1 * rho(k, :)')';
+    end
+end
+
+% Function conversts slant range in observer frame to horizontal (alt-az)
+% coordinates
+function h_cords = horizontal_coordinates(rho_obsv)
+    rho_mag = vecnorm(rho_obsv, 2, 2);
+    az = wrapTo2Pi(atan2(rho_obsv(:, 2), rho_obsv(:, 3)));
+    el = asin(rho_obsv(:, 1)./rho_mag);
+    h_cords = [rho_mag, az, el];
+end
+
+% Function adds multi-variate gaussian noise 
+function noisy_measurements = generate_measurements(h_cords, R, n)
+    noise = mvnrnd(zeros(1,3), R, n);
+    noisy_measurements = h_cords + noise;
+end
+
+% Function to integrate Two Body mechanics and STM ODE
+function ydot = twobody_STM(t, y, mu)
+    r = y(1:3);
+    v = y(4:6);
+    Phi = reshape(y(7:42), 6, 6);
+
+    % Phidot = df/dx * Phi
+    % A = df/dx = [dv/dr, dv/dv; dvdot/dr, dvdot/dv]
+    %           = [0, I; A_21, 0]
+    A = [zeros(3), eye(3); 3*mu/norm(r)^5*(r*r') - mu/norm(r)^3*eye(3), zeros(3)];
+    Phidot = A * Phi;
+    ydot = [v; -mu*r/norm(r)^3; Phidot(:)];
+end
+
+% EKF
+function [x_hat, P] = EKF(dynamics, x0, ytilde, delta_t, Q, R)
+    
+    n_meas = size(ytilde, 1);
+    
+    % Creating variables to store results
+    x_hat = zeros(n_meas);
+    P = zeros(6, 6, n_meas);
+    
+    % Initializing
+    xhat_minus = x0;
+    P_minus = eye(6)* 1e3;
+
+    % Iterating through measurements
+    for k = 1:n_meas
+        % Computing H_k and expected measurements
+    
+        % Computing Kalman Gain
+    
+    
+        % Updating state and covariance estimates
+    
+        % Storing results
+
+        % Propogating to the next time step
+        if k < n_meas
+            % Defining time span and ODE options
+
+            % Propogating state
+
+            
+        end
+    end
+end
