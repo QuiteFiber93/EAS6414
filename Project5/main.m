@@ -14,7 +14,7 @@ obsv_lat = deg2rad(5); % Observer latitude
 LST0 = deg2rad(10); % Observer local siderial time
 
 % tspan for trajectory integration
-tspan = [0, 100];
+tspan = [0, 3000];
 
 % time values for measurements
 tmeas = 0:10:3000;
@@ -72,190 +72,31 @@ for k=1:length(tmeas)
 end
 
 %% Plotting measurements vs true trajectory in observer frame
+
 [t, true_motion] = ode45(func, tspan, y0, options);
 LST_true = LST0 + omega_E*t';
 rho_true_motion = inertial_range(true_motion(:, 1:3), R_obsv, obsv_lat, LST_true);
 rho_obsv_true_motion = observer_range(rho_true_motion, obsv_lat, LST_true);
 h_cords_true_motion = horizontal_coordinates(rho_obsv_true_motion);
 
-% Figure Plotting true trajectory
-% Creating subplots for x, y, and z
-fig = tiledlayout(3, 1);
-ax1 = nexttile;
-plot(ax1, t, true_motion(:, 1))
-ylabel('x(t) (km)')
-
-ax2 = nexttile;
-plot(ax2, t, true_motion(:, 2))
-ylabel('y(t) (km)')
-
-ax3 = nexttile;
-plot(ax3, t, true_motion(:, 3))
-ylabel('z(t) (km)')
-xlabel('t (s)')
-linkaxes([ax1, ax2, ax3], 'x')
-title(fig, 'Earth Fixed Position');
-
-
-% Plotting x, y, and z velocities in subplots and saving the figure
-fig = tiledlayout(3, 1);
-ax1 = nexttile;
-plot(ax1, t, true_motion(:, 4))
-ylabel('xdot(t) (km/s)')
-
-ax2 = nexttile;
-plot(ax2, t, true_motion(:, 5))
-ylabel('ydot(t) (km/s)')
-
-ax3 = nexttile;
-plot(ax3, t, true_motion(:, 6))
-ylabel('zdot(t) (km/s)')
-xlabel('t (s)')
-title(fig, 'Earth Fixed Velocity');
-
-
-figure
 % converting true trajectory from spherical (horizontal) frame to cartesian
 rho_true = h_cords_true_motion(:, 1);
 az_true = h_cords_true_motion(:, 2);
 el_true = h_cords_true_motion(:, 3);
 [x_obsv, y_obsv, z_obsv] = sph2cart(az_true, el_true, rho_true);
-plot3(x_obsv, y_obsv, z_obsv, 'DisplayName','True Trajectory');
-hold on
-[x_meas, y_meas, z_meas] = sph2cart(measurements(:, 2), measurements(:, 3), measurements(:, 1));
-scatter3(x_meas, y_meas, z_meas, 5, 'filled', 'DisplayName', 'Measured Positions');
-hold off
-title('True Trajectory vs Measured States')
-grid()
-legend('Location','northeast')
-xlabel('x (km)')
-ylabel('y (km)')
-zlabel('z (km)')
 
-% Saving plot
-
-% Plotting x, y, z trajectory relative to the observer vs time and
-% overlaying measurements
-figure;
-ax1 = subplot(3, 1, 1);
-hold on
-plot(ax1, t, x_obsv, 'DisplayName','True')
-scatter(ax1, tmeas, x_meas, 5, 'filled', 'DisplayName','Measured')
-hold off
-ylabel('x(t) (km)')
-legend('Location','southeast')
-
-ax2 = subplot(3, 1, 2);
-hold on
-plot(ax2, t, y_obsv, 'DisplayName','True')
-scatter(ax2, tmeas, y_meas, 5, 'filled', 'DisplayName','Measured')
-hold off
-ylabel('y(t) (km)')
-legend('Location','southeast')
-
-ax3 = subplot(3, 1, 3);
-hold on
-plot(ax3, t, z_obsv, 'DisplayName','True')
-scatter(ax3, tmeas, z_meas, 5, 'filled', 'DisplayName','Measured')
-hold off
-ylabel('z(t) (km)')
-xlabel('t (s)')
-legend('Location','southeast')
-
-sgtitle('Position of Satellite Relative to Observer')
-
-% Creating a figure which shows the altitude and azimuth of the satellite
-% overhead from frame of observer
-figure
-polarplot(az_true, 90 - rad2deg(el_true), 'DisplayName','True Trajectory')
-hold on
-polarscatter(measurements(:, 2), 90 - rad2deg(measurements(:, 3)), 5, 'filled', 'DisplayName','Measurements')
-hold off
-title('Polar Plot for Altitude and Azimuth')
-rlim([0, 90])
-ax = gca;
-ax.RTick = 0:30:90;
-ax.RTickLabel = {'90°', '60°', '30°', '0°'};
-
-% Plotting Range vs Range Measurements
-figure
-plot(t, rho_true, 'DisplayName','True Range')
-hold on
-scatter(tmeas, measurements(:, 1), 5, 'filled', 'DisplayName','Range Measurements')
-hold off
-title('True Range vs Range Measurements')
-xlabel('t (s)')
-ylabel('Range (km)')
-legend()
-
-
-exportgraphics(gcf, 'Images/body_fixed_pos.png','Resolution',300)
-exportgraphics(gcf, 'Images/body_fixed_vel.png','Resolution',300)
-exportgraphics(gca, 'Images/measurements.png','Resolution',300)
-exportgraphics(gcf, 'Images/cartesian_pos_measurements.png', 'Resolution',300)
-exportgraphics(gcf, 'Images/alt_az_plot.png', 'Resolution',300)
-exportgraphics(gcf, 'Images/range_plot.png', 'Resolution',300)
+% Decides to actually plot
+plot_measurements = false;
+if plot_measurements
+    plotting_measurements;
+end
 
 %% Plotting Error For EKF
 
-figure
-title('Position Error')
-subplot(3, 1, 1)
-hold on
-plot(tmeas, ekf_error(:, 1), 'DisplayName','Error')
-plot(tmeas, sigma_bounds(:, 1), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
-plot(tmeas, -sigma_bounds(:, 1), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
-hold off
-ylabel('x Error (km)')
-legend()
-
-subplot(3, 1, 2)
-hold on
-plot(tmeas, ekf_error(:, 2), 'DisplayName','Error')
-plot(tmeas, sigma_bounds(:, 2), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
-plot(tmeas, -sigma_bounds(:, 2), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
-hold off
-ylabel('y Error (km)')
-legend()
-
-subplot(3, 1, 3)
-hold on
-plot(tmeas, ekf_error(:, 3), 'DisplayName','Error')
-plot(tmeas, sigma_bounds(:, 3), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
-plot(tmeas, -sigma_bounds(:, 3), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
-hold off
-ylabel('z Error (km)')
-legend()
-
-figure
-title('Velocity Error')
-subplot(3, 1, 1)
-hold on
-plot(tmeas, ekf_error(:, 4), 'DisplayName','Error')
-plot(tmeas, sigma_bounds(:, 4), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
-plot(tmeas, -sigma_bounds(:, 4), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
-hold off
-ylabel('xdot Error (km/s)')
-legend()
-
-subplot(3, 1, 2)
-hold on
-plot(tmeas, ekf_error(:, 5), 'DisplayName','Error')
-plot(tmeas, sigma_bounds(:, 5), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
-plot(tmeas, -sigma_bounds(:, 5), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
-hold off
-ylabel('ydot Error (km/s)')
-legend()
-
-subplot(3, 1, 3)
-hold on
-plot(tmeas, ekf_error(:, 6), 'DisplayName','Error')
-plot(tmeas, sigma_bounds(:, 6), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
-plot(tmeas, -sigma_bounds(:, 6), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
-hold off
-ylabel('zdot Error (km/s)')
-legend()
-
+plot_ekf = true;
+if plot_ekf
+    plotting_ekf;
+end
 
 %% Function Definitions
 
@@ -330,7 +171,7 @@ function [xhat, P_out] = EKF(x0, ytilde, tmeas, Q, R, mu, obsv_lat, LST, R_obsv)
     
     % Initializing
     xhat_minus = x0;
-    P_minus = eye(6) * 1E6;
+    P_minus = diag([1E6, 1E6, 1E6, 1E2, 1E2, 1E2]);
 
     % Iterating through measurements
     for k = 1:n_meas
