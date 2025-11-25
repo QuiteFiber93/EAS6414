@@ -286,4 +286,11 @@ for k = 2:n_sigma
     W_mean(k) = 1 / (2 * (L + lambda));
     W_cov(k) = 1 / (2 * (L + lambda));
 end
+
+% Initializing state 
+
+% Beginning Sequential Estimation
+for k = 1:n_meas
+    
+end
 end
