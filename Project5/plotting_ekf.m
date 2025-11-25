@@ -18,8 +18,6 @@ hold off
 ylabel('y Error (km)')
 legend()
 
-exportgraphics(gcf, 'Images/ekf_position_error.png', 'Resolution',300)
-
 subplot(3, 1, 3)
 hold on
 plot(tmeas, ekf_error(:, 3), 'DisplayName','Error')
@@ -29,6 +27,7 @@ hold off
 ylabel('z Error (km)')
 legend()
 
+exportgraphics(gcf, 'Images/ekf_position_error.png', 'Resolution',300)
 figure
 title('Velocity Error')
 subplot(3, 1, 1)
