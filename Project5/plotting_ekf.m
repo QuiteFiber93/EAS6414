@@ -1,5 +1,5 @@
 figure
-title('Position Error')
+sgtitle('Position Error')
 subplot(3, 1, 1)
 hold on
 plot(tmeas, ekf_error(:, 1), 'DisplayName','Error')
@@ -27,9 +27,9 @@ hold off
 ylabel('z Error (km)')
 legend()
 
-exportgraphics(gcf, 'Images/ekf_position_error.png', 'Resolution',300)
+exportgraphics(gcf, sprintf('Images/ekf_position_error_dt%d.png', delta_t), 'Resolution',300)
 figure
-title('Velocity Error')
+sgtitle('Velocity Error')
 subplot(3, 1, 1)
 hold on
 plot(tmeas, ekf_error(:, 4), 'DisplayName','Error')
@@ -56,4 +56,4 @@ plot(tmeas,  ekf_error(:, 6) - sigma_bounds(:, 6), 'r--', 'LineWidth', 1, 'Handl
 hold off
 ylabel('zdot Error (km/s)')
 legend()
-exportgraphics(gcf, 'Images/ekf_velocity_error.png', 'Resolution',300)
+exportgraphics(gcf, sprintf('Images/ekf_velocity_error_dt%d.png', delta_t), 'Resolution',300)

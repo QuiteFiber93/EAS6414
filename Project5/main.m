@@ -89,7 +89,7 @@ el_true = h_cords_true_motion(:, 3);
 [x_obsv, y_obsv, z_obsv] = sph2cart(az_true, el_true, rho_true);
 
 % Decides to actually plot
-plot_measurements = false;
+plot_measurements = true;
 if plot_measurements
     plotting_measurements;
 end
@@ -101,10 +101,40 @@ if plot_ekf
     plotting_ekf;
 end
 
+%% Implementing Unscented Kalman Filter
+% Add this section to your main.m after the EKF section
+
+% Initial guess (same as EKF)
+x0_ukf = [6990; 1; 1; 1; 1; 1];
+
+% Initial covariance (same as EKF)
+P0 = diag([1E6, 1E6, 1E6, 1E2, 1E2, 1E2]);
+
+% Process noise covariance (same as EKF)
+Q = eye(6) * 1E-6;
+
+% UKF tuning parameters (as specified in project)
+alpha = 1E-3;
+beta = 2;       % Optimal for Gaussian distributions
+kappa = 0;
+
+% Run UKF
+[xhat_ukf, P_ukf] = UKF(@twobody, x0_ukf, measurements, tmeas, P0, Q, R, alpha, beta, kappa, mu, obsv_lat, LST, R_obsv);
+
+% Calculating error
+ukf_error = measured_states - xhat_ukf;
+
+% Extracting 3 sigma error bounds
+sigma_bounds_ukf = zeros(length(tmeas), 6);
+for k = 1:length(tmeas)
+    sigma_bounds_ukf(k, :) = 3 * sqrt(diag(P_ukf(:, :, k)));
+end
+
+
 %% Plotting Error For UKF
 plot_ukf = true;
 if plot_ukf
-    
+    plotting_ukf;
 end
 
 %% Function Definitions
@@ -350,12 +380,12 @@ for k = 1:n_meas
     for l = 1:n_sigma
         % Converting from state to measurements
         r_sigma = Chi_x_prop(1:3, l);
-        rho_inertial_l = inertial_range(r_sigma, R_obsv, obsv_lat, LST(k));
+        rho_inertial_l = inertial_range(r_sigma', R_obsv, obsv_lat, LST(k));
         rho_obsv_l = observer_range(rho_inertial_l, obsv_lat, LST(k));
         y_sigma = horizontal_coordinates(rho_obsv_l);
 
         % Adding noise
-        Gamma_k(:, l) = y_sigma + Chi_v_k(:, l);
+        Gamma_k(:, l) = y_sigma' + Chi_v_k(:, l);
     end
 
     % Obtaining yhat_minus as the mean of the expected observations
@@ -367,11 +397,11 @@ for k = 1:n_meas
     P_yy = zeros(m, m);
     P_xy = zeros(n, m);
     for l = 1:n_sigma
-        dx = Chi_x_prop(:, l) - xhat_minus;
+        x_err = Chi_x_prop(:, l) - xhat_minus;
         y_err = (Gamma_k(:, l) - yhat_minus);
         
         P_yy = P_yy + W_cov(l) * (y_err * y_err');
-        P_xy = P_xy + W_cov(l) * (dx * dy');
+        P_xy = P_xy + W_cov(l) * (x_err * y_err');
     end
 
     % Calculating gain
@@ -379,7 +409,7 @@ for k = 1:n_meas
 
     % updating state estimate and covariance
     xhat_k = xhat_minus + K_k * (ytilde(k, :)' - yhat_minus);
-    P_k = P_minus + K_k * P_yy * K_k';
+    P_k = P_minus - K_k * P_yy * K_k';
 
     % Storing state estimate and covariance in history
     xhat(k, :) = xhat_k';
