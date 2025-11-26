@@ -17,7 +17,8 @@ LST0 = deg2rad(10); % Observer local siderial time
 tspan = [0, 3000];
 
 % time values for measurements
-tmeas = 0:10:3000;
+delta_t = 10;
+tmeas = 0:delta_t:3000;
 
 % Computing LST at tmeas
 LST = LST0 + omega_E * tmeas;
@@ -98,6 +99,12 @@ end
 plot_ekf = true;
 if plot_ekf
     plotting_ekf;
+end
+
+%% Plotting Error For UKF
+plot_ukf = true;
+if plot_ukf
+    
 end
 
 %% Function Definitions
@@ -308,6 +315,9 @@ for k = 1:n_meas
     % Extracting state variables 
     Chi_x_k = Chi_k(1:n, :);
 
+    % Extracting noise variables
+    Chi_v_k = Chi_k(2*n+1:end, :);
+
     % Propogating state of each sigma point from previous step
     % If this is the first step, there is no propogation 
     % Instead, moving directly to update step
@@ -324,19 +334,59 @@ for k = 1:n_meas
     end
     
     % Computing the mean of the sigma points to produce xhat_minus
+    % This multiplies the n-th column of Chi_x_prop by the n-th element of
+    % W_mean with dimensions 
+    % -> (6x2L+1) * (2L+1,1) = (6, 1)
+    xhat_minus = Chi_x_prop * W_mean(:);
+
     % Computing the covariance of the sigma points to produce P_minus
+    P_minus = zeros(n, n);
+    for l = 1:n_sigma
+        P_minus = P_minus + W_cov(l) * (Chi_x_prop(:, l) - xhat_minus) * (Chi_x_prop(:, l) - xhat_minus)';
+    end
 
     % Computing expected observations at each point cloud
+    Gamma_k = zeros(m, n_sigma);
+    for l = 1:n_sigma
+        % Converting from state to measurements
+        r_sigma = Chi_x_prop(1:3, l);
+        rho_inertial_l = inertial_range(r_sigma, R_obsv, obsv_lat, LST(k));
+        rho_obsv_l = observer_range(rho_inertial_l, obsv_lat, LST(k));
+        y_sigma = horizontal_coordinates(rho_obsv_l);
+
+        % Adding noise
+        Gamma_k(:, l) = y_sigma + Chi_v_k(:, l);
+    end
+
     % Obtaining yhat_minus as the mean of the expected observations
+    yhat_minus = Gamma_k * W_mean(:);
 
     % Measurement update equations
     % P^eyey is the covaraince of the expected observations above
     % P^exey is the cross-covariance
+    P_yy = zeros(m, m);
+    P_xy = zeros(n, m);
+    for l = 1:n_sigma
+        dx = Chi_x_prop(:, l) - xhat_minus;
+        y_err = (Gamma_k(:, l) - yhat_minus);
+        
+        P_yy = P_yy + W_cov(l) * (y_err * y_err');
+        P_xy = P_xy + W_cov(l) * (dx * dy');
+    end
 
     % Calculating gain
+    K_k = P_xy / P_yy;
 
     % updating state estimate and covariance
+    xhat_k = xhat_minus + K_k * (ytilde(k, :)' - yhat_minus);
+    P_k = P_minus + K_k * P_yy * K_k';
 
     % Storing state estimate and covariance in history
+    xhat(k, :) = xhat_k';
+    P(:, :, k) = P_k;
+
+    % Updating augmented values for iteration
+    xhat_k_aug = [xhat_k; zeros(n, 1); zeros(m, 1)];
+    P_k_aug = blkdiag(P_k, Q, R);
 end
 end
