@@ -260,11 +260,20 @@ function [xhat, P] = UKF(x0, ytilde, tmeas, P0, Q, R, alpha, beta, kappa, mu, ob
 xhat = zeros(length(tmeas), 6); % Contains history of state estiamtes at kth row
 P = zeros(6, 6, length(tmeas)); % Contains history of state estimate covariance
 
-% Initializing variables
+% Establishing dimensions
 n = size(x0, 1);
 m = size(R, 1);
 n_meas = size(ytilde, 1);
 L = 2*n + m;
+
+% Initializing variables
+% Initial estimate and covariance
+xhat_k = x0;
+P_k = P0;
+
+% Augmenting to include noise
+xhat_k_aug = [xhat_k; zeros(n, 1); zeros(m, 1)];
+P_k_aug = blkdiag(P_k, Q, R);
 
 % Scaling Parameters
 lambda = alpha^2 * (L + kappa)- L;
@@ -287,10 +296,27 @@ for k = 2:n_sigma
     W_cov(k) = 1 / (2 * (L + lambda));
 end
 
-% Initializing state 
-
-% Beginning Sequential Estimation
+% Loop for sequential estimation
 for k = 1:n_meas
-    
+    % Generating sigma_points
+    % Using Cholesky decomposition to obtain sqrt(P) using P = S*S'
+    S = chol(P_k_aug, "lower");
+
+    % Generating cloud of sigma points
+    Chi_k = [xhat_k_aug, xhat_k_aug + gamma*S, xhat_k_aug - gamma*S];
+
+    % Extracting state variables 
+    Chi_x_k = Chi_k(1:n, :)
+
+    if k == 1
+        chi_x_prop = chi_x_k;
+    else
+        chi_x_prop = zeros(n, n_sigma);
+        options = odeset('RelTol', 1E-8, 'AbsTol', 1E-10);
+        twobody_ode = @(t, y) twobody(t, y, mu);
+        for l = 1:n_sigma
+            [~, simulated_trajectory] = ode45(twobody_ode, tmeas(k-1:k), Chi_x_k(:, l), options)
+        end
+    end
 end
 end
