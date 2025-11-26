@@ -254,7 +254,7 @@ H_k = [H11, zeros(3, 3)];
 end
 
 % UKF Function
-function [xhat, P] = UKF(x0, ytilde, tmeas, P0, Q, R, alpha, beta, kappa, mu, obsv_lat, LST, R_obsv)
+function [xhat, P] = UKF(dynamics, x0, ytilde, tmeas, P0, Q, R, alpha, beta, kappa, mu, obsv_lat, LST, R_obsv)
 
 % Storage of outputs
 xhat = zeros(length(tmeas), 6); % Contains history of state estiamtes at kth row
@@ -306,17 +306,37 @@ for k = 1:n_meas
     Chi_k = [xhat_k_aug, xhat_k_aug + gamma*S, xhat_k_aug - gamma*S];
 
     % Extracting state variables 
-    Chi_x_k = Chi_k(1:n, :)
+    Chi_x_k = Chi_k(1:n, :);
 
+    % Propogating state of each sigma point from previous step
+    % If this is the first step, there is no propogation 
+    % Instead, moving directly to update step
     if k == 1
         chi_x_prop = chi_x_k;
     else
         chi_x_prop = zeros(n, n_sigma);
         options = odeset('RelTol', 1E-8, 'AbsTol', 1E-10);
-        twobody_ode = @(t, y) twobody(t, y, mu);
+        twobody_ode = @(t, y) dynamics(t, y, mu);
         for l = 1:n_sigma
-            [~, simulated_trajectory] = ode45(twobody_ode, tmeas(k-1:k), Chi_x_k(:, l), options)
+            [~, simulated_trajectory] = ode45(twobody_ode, tmeas(k-1:k), Chi_x_k(:, l), options);
+            chi_x_prop(:, l) = simulated_trajectory(end, :)';
         end
     end
+    
+    % Computing the mean of the sigma points to produce xhat_minus
+    % Computing the covariance of the sigma points to produce P_minus
+
+    % Computing expected observations at each point cloud
+    % Obtaining yhat_minus as the mean of the expected observations
+
+    % Measurement update equations
+    % P^eyey is the covaraince of the expected observations above
+    % P^exey is the cross-covariance
+
+    % Calculating gain
+
+    % updating state estimate and covariance
+
+    % Storing state estimate and covariance in history
 end
 end

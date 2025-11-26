@@ -254,7 +254,7 @@ H_k = [H11, zeros(3, 3)];
 end
 
 % UKF Function
-function [xhat, P] = UKF(x0, ytilde, tmeas, P0, Q, R, alpha, beta, kappa, mu, obsv_lat, LST, R_obsv)
+function [xhat, P] = UKF(dynamics, x0, ytilde, tmeas, P0, Q, R, alpha, beta, kappa, mu, obsv_lat, LST, R_obsv)
 
 % Storage of outputs
 xhat = zeros(length(tmeas), 6); % Contains history of state estiamtes at kth row
@@ -312,14 +312,14 @@ for k = 1:n_meas
     % If this is the first step, there is no propogation 
     % Instead, moving directly to update step
     if k == 1
-        chi_x_prop = chi_x_k;
+        Chi_x_prop = Chi_x_k;
     else
-        chi_x_prop = zeros(n, n_sigma);
+        Chi_x_prop = zeros(n, n_sigma);
         options = odeset('RelTol', 1E-8, 'AbsTol', 1E-10);
-        twobody_ode = @(t, y) twobody(t, y, mu);
+        twobody_ode = @(t, y) dynamics(t, y, mu);
         for l = 1:n_sigma
             [~, simulated_trajectory] = ode45(twobody_ode, tmeas(k-1:k), Chi_x_k(:, l), options);
-            chi_x_prop(:, l) = simulated_trajectory(end, :)';
+            Chi_x_prop(:, l) = simulated_trajectory(end, :)';
         end
     end
     
