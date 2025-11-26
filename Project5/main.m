@@ -17,7 +17,7 @@ LST0 = deg2rad(10); % Observer local siderial time
 tspan = [0, 3000];
 
 % time values for measurements
-delta_t = 10;
+delta_t = 100;
 tmeas = 0:delta_t:3000;
 
 % Computing LST at tmeas
@@ -52,6 +52,25 @@ h_cords = horizontal_coordinates(rho_obsv);
 % Adding Noise
 measurements = generate_measurements(h_cords, R, length(tmeas));
 
+%% Plotting measurements vs true trajectory in observer frame
+
+[t, true_motion] = ode45(func, tspan, y0, options);
+LST_true = LST0 + omega_E*t';
+rho_true_motion = inertial_range(true_motion(:, 1:3), R_obsv, obsv_lat, LST_true);
+rho_obsv_true_motion = observer_range(rho_true_motion, obsv_lat, LST_true);
+h_cords_true_motion = horizontal_coordinates(rho_obsv_true_motion);
+
+% converting true trajectory from spherical (horizontal) frame to cartesian
+rho_true = h_cords_true_motion(:, 1);
+az_true = h_cords_true_motion(:, 2);
+el_true = h_cords_true_motion(:, 3);
+[x_obsv, y_obsv, z_obsv] = sph2cart(az_true, el_true, rho_true);
+
+% Decides to actually plot
+plot_measurements = true;
+if plot_measurements
+    plotting_measurements;
+end
 
 %% Implementing Extended Kalman Filter
 
@@ -74,31 +93,12 @@ for k=1:length(tmeas)
     sigma_bounds(k, :) = 3 * sqrt(diag(P_ekf(:, :, k)));
 end
 
-%% Plotting measurements vs true trajectory in observer frame
-
-[t, true_motion] = ode45(func, tspan, y0, options);
-LST_true = LST0 + omega_E*t';
-rho_true_motion = inertial_range(true_motion(:, 1:3), R_obsv, obsv_lat, LST_true);
-rho_obsv_true_motion = observer_range(rho_true_motion, obsv_lat, LST_true);
-h_cords_true_motion = horizontal_coordinates(rho_obsv_true_motion);
-
-% converting true trajectory from spherical (horizontal) frame to cartesian
-rho_true = h_cords_true_motion(:, 1);
-az_true = h_cords_true_motion(:, 2);
-el_true = h_cords_true_motion(:, 3);
-[x_obsv, y_obsv, z_obsv] = sph2cart(az_true, el_true, rho_true);
-
-% Decides to actually plot
-plot_measurements = true;
-if plot_measurements
-    plotting_measurements;
-end
-
 %% Plotting Error For EKF
 
 plot_ekf = true;
 if plot_ekf
     plotting_ekf;
+    log_filter_results(tmeas, ekf_error, sigma_bounds, delta_t, 'EKF');
 end
 
 %% Implementing Unscented Kalman Filter
@@ -111,7 +111,7 @@ x0_ukf = [6990; 1; 1; 1; 1; 1];
 P0 = diag([1E6, 1E6, 1E6, 1E2, 1E2, 1E2]);
 
 % Process noise covariance (same as EKF)
-Q = eye(6) * 1E-6;
+Q = eye(6) * 1E-8;
 
 % UKF tuning parameters (as specified in project)
 alpha = 1E-3;
@@ -135,6 +135,7 @@ end
 plot_ukf = true;
 if plot_ukf
     plotting_ukf;
+    log_filter_results(tmeas, ukf_error, sigma_bounds, delta_t, 'UKF');
 end
 
 %% Function Definitions
@@ -299,9 +300,10 @@ P = zeros(6, 6, length(tmeas)); % Contains history of state estimate covariance
 
 % Establishing dimensions
 n = size(x0, 1);
+q = size(Q, 1);
 m = size(R, 1);
 n_meas = size(ytilde, 1);
-L = 2*n + m;
+L = n + q + m;
 
 % Initializing variables
 % Initial estimate and covariance
@@ -345,8 +347,11 @@ for k = 1:n_meas
     % Extracting state variables 
     Chi_x_k = Chi_k(1:n, :);
 
+    % Extracting process noise
+    Chi_w_k = Chi_k(n+1:n+q, :);
+
     % Extracting noise variables
-    Chi_v_k = Chi_k(2*n+1:end, :);
+    Chi_v_k = Chi_k(n+q+1:end, :);
 
     % Propogating state of each sigma point from previous step
     % If this is the first step, there is no propogation 
@@ -359,7 +364,7 @@ for k = 1:n_meas
         twobody_ode = @(t, y) dynamics(t, y, mu);
         for l = 1:n_sigma
             [~, simulated_trajectory] = ode45(twobody_ode, tmeas(k-1:k), Chi_x_k(:, l), options);
-            Chi_x_prop(:, l) = simulated_trajectory(end, :)';
+            Chi_x_prop(:, l) = simulated_trajectory(end, :)' + Chi_w_k(:, l);
         end
     end
     
@@ -419,4 +424,23 @@ for k = 1:n_meas
     xhat_k_aug = [xhat_k; zeros(n, 1); zeros(m, 1)];
     P_k_aug = blkdiag(P_k, Q, R);
 end
+end
+
+% Function to log the results every 200 seconds
+function log_filter_results(tmeas, errors, sigma_bounds, delta_t, filter_type)
+    filename = sprintf('logs/%s_results_dt%d.csv', filter_type, delta_t);
+    skip_idx = 200 / delta_t;
+    tmeas = tmeas(:);
+    T = table(tmeas(1:skip_idx:end), ...
+    errors(1:skip_idx:end, 1), errors(1:skip_idx:end,2), errors(1:skip_idx:end,3), ...
+    errors(1:skip_idx:end,4), errors(1:skip_idx:end,5), errors(1:skip_idx:end,6), ...
+    sigma_bounds(1:skip_idx:end,1), sigma_bounds(1:skip_idx:end,2), sigma_bounds(1:skip_idx:end,3), ...
+    sigma_bounds(1:skip_idx:end,4), sigma_bounds(1:skip_idx:end,5), sigma_bounds(1:skip_idx:end,6), ...
+    'VariableNames', {'Time_s', ...
+        'x_error_km', 'y_error_km', 'z_error_km', ...
+        'xdot_error_km_s', 'ydot_error_km_s', 'zdot_error_km_s', ...
+        'x_3sigma_km', 'y_3sigma_km', 'z_3sigma_km', ...
+        'xdot_3sigma_km_s', 'ydot_3sigma_km_s', 'zdot_3sigma_km_s'});
+
+    writetable(T, filename);
 end

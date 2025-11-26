@@ -17,7 +17,8 @@ LST0 = deg2rad(10); % Observer local siderial time
 tspan = [0, 3000];
 
 % time values for measurements
-tmeas = 0:10:3000;
+delta_t = 10;
+tmeas = 0:delta_t:3000;
 
 % Computing LST at tmeas
 LST = LST0 + omega_E * tmeas;
@@ -88,7 +89,7 @@ el_true = h_cords_true_motion(:, 3);
 [x_obsv, y_obsv, z_obsv] = sph2cart(az_true, el_true, rho_true);
 
 % Decides to actually plot
-plot_measurements = false;
+plot_measurements = true;
 if plot_measurements
     plotting_measurements;
 end
@@ -98,12 +99,43 @@ end
 plot_ekf = true;
 if plot_ekf
     plotting_ekf;
+    log_filter_results(tmeas, errors, sigma_bounds, delta_t, filter_type)
 end
+
+%% Implementing Unscented Kalman Filter
+% Add this section to your main.m after the EKF section
+
+% Initial guess (same as EKF)
+x0_ukf = [6990; 1; 1; 1; 1; 1];
+
+% Initial covariance (same as EKF)
+P0 = diag([1E6, 1E6, 1E6, 1E2, 1E2, 1E2]);
+
+% Process noise covariance (same as EKF)
+Q = eye(6) * 1E-8;
+
+% UKF tuning parameters (as specified in project)
+alpha = 1E-3;
+beta = 2;       % Optimal for Gaussian distributions
+kappa = 0;
+
+% Run UKF
+[xhat_ukf, P_ukf] = UKF(@twobody, x0_ukf, measurements, tmeas, P0, Q, R, alpha, beta, kappa, mu, obsv_lat, LST, R_obsv);
+
+% Calculating error
+ukf_error = measured_states - xhat_ukf;
+
+% Extracting 3 sigma error bounds
+sigma_bounds_ukf = zeros(length(tmeas), 6);
+for k = 1:length(tmeas)
+    sigma_bounds_ukf(k, :) = 3 * sqrt(diag(P_ukf(:, :, k)));
+end
+
 
 %% Plotting Error For UKF
 plot_ukf = true;
 if plot_ukf
-    
+    plotting_ukf;
 end
 
 %% Function Definitions
@@ -268,9 +300,10 @@ P = zeros(6, 6, length(tmeas)); % Contains history of state estimate covariance
 
 % Establishing dimensions
 n = size(x0, 1);
+q = size(Q, 1);
 m = size(R, 1);
 n_meas = size(ytilde, 1);
-L = 2*n + m;
+L = n + q + m;
 
 % Initializing variables
 % Initial estimate and covariance
@@ -314,8 +347,11 @@ for k = 1:n_meas
     % Extracting state variables 
     Chi_x_k = Chi_k(1:n, :);
 
+    % Extracting process noise
+    Chi_w_k = Chi_k(n+1:n+q, :);
+
     % Extracting noise variables
-    Chi_v_k = Chi_k(2*n+1:end, :);
+    Chi_v_k = Chi_k(n+q+1:end, :);
 
     % Propogating state of each sigma point from previous step
     % If this is the first step, there is no propogation 
@@ -326,9 +362,9 @@ for k = 1:n_meas
         Chi_x_prop = zeros(n, n_sigma);
         options = odeset('RelTol', 1E-8, 'AbsTol', 1E-10);
         twobody_ode = @(t, y) dynamics(t, y, mu);
-        for m = 1:n_sigma
-            [~, simulated_trajectory] = ode45(twobody_ode, tmeas(k-1:k), Chi_x_k(:, m), options);
-            Chi_x_prop(:, m) = simulated_trajectory(end, :)';
+        for l = 1:n_sigma
+            [~, simulated_trajectory] = ode45(twobody_ode, tmeas(k-1:k), Chi_x_k(:, l), options);
+            Chi_x_prop(:, l) = simulated_trajectory(end, :)' + Chi_w_k(:, l);
         end
     end
     
@@ -340,34 +376,71 @@ for k = 1:n_meas
 
     % Computing the covariance of the sigma points to produce P_minus
     P_minus = zeros(n, n);
-    for m = 1:n_sigma
-        P_minus = P_minus + W_cov(m) * (Chi_x_prop(:, m) - xhat_minus) * (Chi_x_prop(:, m) - xhat_minus)';
+    for l = 1:n_sigma
+        P_minus = P_minus + W_cov(l) * (Chi_x_prop(:, l) - xhat_minus) * (Chi_x_prop(:, l) - xhat_minus)';
     end
 
     % Computing expected observations at each point cloud
     Gamma_k = zeros(m, n_sigma);
-    for m = 1:n_sigma
+    for l = 1:n_sigma
         % Converting from state to measurements
-        r_sigma = Chi_x_prop(1:3, m);
-        rho_inertial_m = inertial_range(r_sigma, R_obsv, obsv_lat, LST(k));
-        rho_obsv_m = observer_range(rho_inertial_m, obsv_lat, LST(k));
-        y_sigma = horizontal_coordinates(rho_obsv_m);
+        r_sigma = Chi_x_prop(1:3, l);
+        rho_inertial_l = inertial_range(r_sigma', R_obsv, obsv_lat, LST(k));
+        rho_obsv_l = observer_range(rho_inertial_l, obsv_lat, LST(k));
+        y_sigma = horizontal_coordinates(rho_obsv_l);
 
         % Adding noise
-        Gamma_k(:, m) = y_sigma + Chi_v_k(:, m);
+        Gamma_k(:, l) = y_sigma' + Chi_v_k(:, l);
     end
 
     % Obtaining yhat_minus as the mean of the expected observations
-    yhat_minus = 
+    yhat_minus = Gamma_k * W_mean(:);
 
     % Measurement update equations
     % P^eyey is the covaraince of the expected observations above
     % P^exey is the cross-covariance
+    P_yy = zeros(m, m);
+    P_xy = zeros(n, m);
+    for l = 1:n_sigma
+        x_err = Chi_x_prop(:, l) - xhat_minus;
+        y_err = (Gamma_k(:, l) - yhat_minus);
+        
+        P_yy = P_yy + W_cov(l) * (y_err * y_err');
+        P_xy = P_xy + W_cov(l) * (x_err * y_err');
+    end
 
     % Calculating gain
+    K_k = P_xy / P_yy;
 
     % updating state estimate and covariance
+    xhat_k = xhat_minus + K_k * (ytilde(k, :)' - yhat_minus);
+    P_k = P_minus - K_k * P_yy * K_k';
 
     % Storing state estimate and covariance in history
+    xhat(k, :) = xhat_k';
+    P(:, :, k) = P_k;
+
+    % Updating augmented values for iteration
+    xhat_k_aug = [xhat_k; zeros(n, 1); zeros(m, 1)];
+    P_k_aug = blkdiag(P_k, Q, R);
 end
+end
+
+% Function to log the results every 200 seconds
+function log_filter_results(tmeas, errors, sigma_bounds, delta_t, filter_type)
+    filename = sprintf('logs/%s_results_dt%d.csv', filter_type, delta_t);
+    skip_idx = 200 / delta_t;
+
+    T = table(tmeas, ...
+    errors(1:skip_idx:end, 1), errors(1:skip_idx:end,2), errors(1:skip_idx:end,3), ...
+    errors(1:skip_idx:end,4), errors(1:skip_idx:end,5), errors(1:skip_idx:end,6), ...
+    sigma_bounds(1:skip_idx:end,1), sigma_bounds(1:skip_idx:end,2), sigma_bounds(1:skip_idx:end,3), ...
+    sigma_bounds(1:skip_idx:end,4), sigma_bounds(1:skip_idx:end,5), sigma_bounds(1:skip_idx:end,6), ...
+    'VariableNames', {'Time_s', ...
+        'x_error_km', 'y_error_km', 'z_error_km', ...
+        'xdot_error_km_s', 'ydot_error_km_s', 'zdot_error_km_s', ...
+        'x_3sigma_km', 'y_3sigma_km', 'z_3sigma_km', ...
+        'xdot_3sigma_km_s', 'ydot_3sigma_km_s', 'zdot_3sigma_km_s'});
+
+    writetable(T, filename);
 end
