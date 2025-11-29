@@ -17,7 +17,7 @@ LST0 = deg2rad(10); % Observer local siderial time
 tspan = [0, 3000];
 
 % time values for measurements
-delta_t = 100;
+delta_t = 10;
 tmeas = 0:delta_t:3000;
 
 % Computing LST at tmeas
@@ -67,7 +67,7 @@ el_true = h_cords_true_motion(:, 3);
 [x_obsv, y_obsv, z_obsv] = sph2cart(az_true, el_true, rho_true);
 
 % Decides to actually plot
-plot_measurements = true;
+plot_measurements = false;
 if plot_measurements
     plotting_measurements;
 end
@@ -95,7 +95,7 @@ end
 
 %% Plotting Error For EKF
 
-plot_ekf = true;
+plot_ekf = false;
 if plot_ekf
     plotting_ekf;
     log_filter_results(tmeas, ekf_error, sigma_bounds, delta_t, 'EKF');
