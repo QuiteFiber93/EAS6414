@@ -67,7 +67,7 @@ el_true = h_cords_true_motion(:, 3);
 [x_obsv, y_obsv, z_obsv] = sph2cart(az_true, el_true, rho_true);
 
 % Decides to actually plot
-plot_measurements = false;
+plot_measurements = true;
 if plot_measurements
     plotting_measurements;
 end
@@ -95,7 +95,7 @@ end
 
 %% Plotting Error For EKF
 
-plot_ekf = false;
+plot_ekf = true;
 if plot_ekf
     plotting_ekf;
     log_filter_results(tmeas, ekf_error, sigma_bounds, delta_t, 'EKF');

@@ -6,6 +6,7 @@ plot(tmeas, ekf_error(:, 1), 'DisplayName','Error')
 plot(tmeas,  ekf_error(:, 1) + sigma_bounds(:, 1), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
 plot(tmeas,  ekf_error(:, 1) - sigma_bounds(:, 1), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
 hold off
+xlabel('Time (s)')
 ylabel('x Error (km)')
 grid()
 legend()
@@ -16,6 +17,7 @@ plot(tmeas, ekf_error(:, 2), 'DisplayName','Error')
 plot(tmeas,  ekf_error(:, 2) + sigma_bounds(:, 2), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
 plot(tmeas,  ekf_error(:, 2) - sigma_bounds(:, 2), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
 hold off
+xlabel('Time (s)')
 ylabel('y Error (km)')
 grid()
 legend()
@@ -26,6 +28,7 @@ plot(tmeas, ekf_error(:, 3), 'DisplayName','Error')
 plot(tmeas,  ekf_error(:, 3) + sigma_bounds(:, 3), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
 plot(tmeas,  ekf_error(:, 3) - sigma_bounds(:, 3), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
 hold off
+xlabel('Time (s)')
 ylabel('z Error (km)')
 grid()
 legend()
@@ -39,6 +42,7 @@ plot(tmeas, ekf_error(:, 4), 'DisplayName','Error')
 plot(tmeas,  ekf_error(:, 4) + sigma_bounds(:, 4), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
 plot(tmeas,  ekf_error(:, 4) - sigma_bounds(:, 4), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
 hold off
+xlabel('Time (s)')
 ylabel('xdot Error (km/s)')
 grid()
 legend()
@@ -49,6 +53,7 @@ plot(tmeas, ekf_error(:, 5), 'DisplayName','Error')
 plot(tmeas,  ekf_error(:, 5) + sigma_bounds(:, 5), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
 plot(tmeas,  ekf_error(:, 5) - sigma_bounds(:, 5), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
 hold off
+xlabel('Time (s)')
 ylabel('ydot Error (km/s)')
 grid()
 legend()
@@ -59,6 +64,7 @@ plot(tmeas, ekf_error(:, 6), 'DisplayName','Error')
 plot(tmeas,  ekf_error(:, 6) + sigma_bounds(:, 6), 'r--', 'LineWidth', 1, 'DisplayName', '3\sigma');
 plot(tmeas,  ekf_error(:, 6) - sigma_bounds(:, 6), 'r--', 'LineWidth', 1, 'HandleVisibility', 'off');
 hold off
+xlabel('Time (s)')
 ylabel('zdot Error (km/s)')
 grid()
 legend()
